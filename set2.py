@@ -80,7 +80,7 @@ def aes_cbc_decrypt(bytearr, key, IV=None, blocksize=16):
         decrypted = repeating_xor(aes_ecb_decrypt(block, key), prev_block)
         out_blocks.append(decrypted)
         prev_block = block
-    return pkcs7_unpad(b''.join([block for block in out_blocks]), blocksize)
+    return pkcs7_unpad(b''.join([block for block in out_blocks]))
 
 def generate_rand_bytes(num_bytes):
     return b''.join([bytes([np.random.randint(256)]) for _ in range(num_bytes)])
@@ -259,7 +259,7 @@ def encrypt_user(user_dict, key=None, blocksize=16):
 
 def decrypt_user(encrypted_user):
     global key
-    return k_v_parse(pkcs7_unpad(aes_ecb_decrypt(encrypted_user, key), 16).decode())
+    return k_v_parse(pkcs7_unpad(aes_ecb_decrypt(encrypted_user, key)).decode())
 
 def encrypted_profile(email):
     global key
@@ -371,7 +371,7 @@ if run[5]:
     # find prefix size. not sure if a fixed length prefix is correct in the sense of the challenge?
 
 
-def pkcs7_unpad(data, blocksize):
+def pkcs7_unpad(data):
     pad_len = 1
     last_byte = bytearray(data)[-pad_len]
     while True:
@@ -388,7 +388,7 @@ if run[6]:
     print('\n---------------')
     print('Challenge 15: PKCS7 padding validation')
 
-    print(pkcs7_unpad(pkcs7_pad(b'00000000', 16), 16))
+    print(pkcs7_unpad(pkcs7_pad(b'00000000', 16)))
 
 
 def encode_userdata(string):

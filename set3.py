@@ -99,7 +99,7 @@ def generate_token():
         IV = generate_rand_bytes(16)
     global lines
     data = codecs.decode(lines[np.random.randint(len(lines))].encode(), 'base64')
-    return aes_cbc_encrypt(data, key, IV)
+    return IV, aes_cbc_encrypt(data, key, IV)
 
 def cbc_padding_oracle(encrypted):
     global key
@@ -114,6 +114,7 @@ def xor_byte(data, idx, val):
     data = list(data)
     data[idx] ^= val
     return bytes(data)
+
         
 print("SET 3")
 print("\n-----------")
@@ -122,11 +123,21 @@ with open('challenge17.txt', 'r') as f:
     lines = f.readlines()
 lines = [line.strip('\n') for line in lines]
 
-data = generate_token()
+IV, data = generate_token()
 print(data)
-# change last byte
+
+# IV (xor) decrypted = plaintext
+# IV (xor) plaintext = decrypted
+
 
 print(cbc_padding_oracle(data))
+
+for i in range(1, 256):
+    data2 = copy(data)
+    data2 = xor_byte(data2, len(data2)-1, i)
+    print(data[-3:], data2[-3:])
+    if cbc_padding_oracle(data2):
+        print(i)
 
 
 
