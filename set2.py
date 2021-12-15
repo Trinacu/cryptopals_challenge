@@ -49,6 +49,19 @@ def pkcs7_pad(bytearr, blocksize):
     arr = bytearr + pad_len * bytes([pad_len])
     return arr
 
+def pkcs7_unpad(data):
+    pad_len = 1
+    last_byte = bytearray(data)[-pad_len]
+    while True:
+        if bytearray(data)[-pad_len] != last_byte:
+            pad_len -= 1
+            break
+        pad_len += 1
+    for i in range(1, pad_len+1):
+        if data[-i] != pad_len:
+            raise Exception ("Non-valid padding!")
+    return data[:-pad_len]
+
 def aes_ecb_encrypt(bytearr, key):
     cipher = AES.new(key, AES.MODE_ECB)
     return cipher.encrypt(bytearr)
@@ -176,7 +189,7 @@ def ecb_blackbox(bytearr, key=None, blocksize=16):
     return aes_ecb_encrypt(bytearr, key)
 
 # RUN ARRAY
-run = [False, False, False, False, False, False, False, True]
+run = [True, True, True, True, True, True, True, True]
 
 print('SET 2')
 if run[0]:
@@ -191,13 +204,13 @@ if run[1]:
         strIn = f.read()
 
     strIn = codecs.decode(bytes(strIn, 'utf-8'), 'base64')
-    key = "YELLOW SUBMARINE"
-    bytearr = aes_cbc_decrypt(strIn, key.encode())
+    key = b"YELLOW SUBMARINE"
+    bytearr = aes_cbc_decrypt(strIn, key)
     print(bytearr.decode())
 
     strIn = "to je le testni tekst da vidim ce dela ta predikcija ECB ali CBC, tu je se malo extra za ziher     "
-    crypted = aes_cbc_encrypt(strIn.encode(), key.encode())
-    print(strIn + '\n' + aes_cbc_decrypt(crypted, key.encode()).decode())
+    crypted = aes_cbc_encrypt(strIn.encode(), key)
+    print(strIn + '\n' + aes_cbc_decrypt(crypted, key).decode())
 
 if run[2]:
     print('\n---------------')
@@ -263,8 +276,11 @@ def decrypt_user(encrypted_user):
 
 def encrypted_profile(email):
     global key
+    print(type(email))
     if key == None:
         key = generate_rand_bytes(16)
+    print(type(key))
+    print(key)
     cipher = AES.new(key, AES.MODE_ECB)
     
     usr = encode_user(profile_for(email.replace("&", "").replace("=", ""))).encode()
@@ -371,18 +387,6 @@ if run[5]:
     # find prefix size. not sure if a fixed length prefix is correct in the sense of the challenge?
 
 
-def pkcs7_unpad(data):
-    pad_len = 1
-    last_byte = bytearray(data)[-pad_len]
-    while True:
-        if bytearray(data)[-pad_len] != last_byte:
-            pad_len -= 1
-            break
-        pad_len += 1
-    for i in range(1, pad_len+1):
-        if data[-i] != pad_len:
-            raise Exception ("Non-valid padding!")
-    return data[:-pad_len]
 
 if run[6]:
     print('\n---------------')
@@ -410,10 +414,8 @@ def k_v_parse_c16(string):
     return {key:val for key,val in [field.split('=') for field in string.split(';')]}
 
 def check_admin_c16(data):
-    global key
-    d = k_v_parse_c16(aes_cbc_decrypt(data, key).decode())
-    if 'admin' in d:
-        print('admin in dict!')
+    data = decrypt_userdata_raw(data)
+    return data.find(b';admin=true;') != -1
 
 if run[7]:
     print('\n---------------')
@@ -421,57 +423,18 @@ if run[7]:
     # break the decryption and set admin=true!
 
     key = generate_rand_bytes(16)
-
-    # in CBC mode, a 1-bit error in ciphertext block will result in:
-    # - completely scrambled the block with the error (AND?)
-    # - produce the identical 1-bit error/edit in the next ciphertext block
-    
-    # why? because the ciphertext of the previous block is XORed
-    # with the result of decryption to get the plaintext blocks!
-
-    # this obviously won't work if it is implemented correctly (but let's make sure)
     
     offset = 16
     inject = ':admin<true:'
     encrypted = encode_userdata(offset * '0' + inject + ((offset - len(inject)) * '0'))
-    print(decrypt_userdata(encrypted))
-    check_admin_c16(encrypted)
+    print(check_admin_c16(encrypted))
 
     tmp = list(encrypted)
     tmp[32] ^= 1
     tmp[38] ^= 1
     tmp[43] ^= 1
     
-    print(decrypt_userdata_raw(bytes(tmp)))
-    print(decrypt_userdata(bytes(tmp)))
-
-
-    """
-    blocks1 = get_blocks(encrypted, 16)
-    #i = 0
-    # make mask that will change the symbols into ; and = (the ones we want to inject)
-    mask = bytearray([0] * 16)
-    mask[0] = 1
-    mask[6] = 1
-    print(len(mask))
-    blocks2 = copy(blocks1)
-    blocks2[1] = repeating_xor(blocks2[1], mask)
-    for i in range(len(blocks1)):
-        if blocks1[i] != blocks2[i]:
-            print('different blocks found! {}'.format(i))
-
-    tmp = b''.join(blocks2)
-    decrypted = decrypt_userdata_raw(tmp)
-    print(decrypted)
-
-    tmp2 = tmp[:16] + tmp[32:]
-    #a = get_blocks(tmp2, 16)
-    #a[0] = repeating_xor(a[0], mask)
-    #tmp2 = b''.join(a)
-    decrypted2 = decrypt_userdata_raw(tmp2)
-    print(decrypted2)
-    """
-
+    print(check_admin_c16(bytes(tmp)))
 
 
 
