@@ -3,7 +3,10 @@ import numpy as np
 
 from copy import copy
 
+from itertools import cycle
+
 from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
 
 
 key = None
@@ -32,6 +35,16 @@ def pkcs7_unpad(data):
     print(data[-(pad_len+1):])
     return data[:-pad_len]
 
+def get_blocks(data, blocksize):
+    return [data[start:start+blocksize] for start in range(0, len(data), blocksize)]
+
+def repeating_xor(bytearr1, bytearr2):
+    if len(bytearr1) >= len(bytearr2):
+        bytearr2 = cycle(bytearr2)
+    else:
+        bytearr1 = cycle(bytearr1)
+    return bytes(a ^ b for a, b in zip(bytearr1, bytearr2))
+
 def aes_ecb_encrypt(data, key):
     cipher = AES.new(key, AES.MODE_ECB)
     return cipher.encrypt(data)
@@ -42,7 +55,7 @@ def aes_ecb_decrypt(data, key):
 
 def aes_cbc_encrypt(data, key, IV, blocksize=16):
     data = pkcs7_pad(data, blocksize)
-    blocks = [data[start:start+blocksize] for start in range(0, len(data), blocksize)]
+    blocks = get_blocks(data, blocksize)
     prev_encrypted = IV
     out_blocks = []
     for block in blocks:
@@ -50,10 +63,10 @@ def aes_cbc_encrypt(data, key, IV, blocksize=16):
         encrypted = aes_ecb_encrypt(xor, key)
         out_blocks.append(encrypted)
         prev_encrypted = encrypted
-    return b''.join([block for block in out_blocks])
+    return b''.join(out_blocks)
 
 def aes_cbc_decrypt(data, key, IV, blocksize=16):
-    blocks = [data[start:start+blocksize] for start in range(0, len(data), blocksize)]
+    blocks = get_blocks(data, blocksize)
     prev_block = IV
     out_blocks = []
     for block in blocks:
@@ -61,7 +74,7 @@ def aes_cbc_decrypt(data, key, IV, blocksize=16):
         xor = bytes(a ^ b for a, b in zip(decrypted, prev_block))
         out_blocks.append(xor)
         prev_block = block
-    return pkcs7_unpad(b''.join([block for block in out_blocks]))
+    return pkcs7_unpad(b''.join(out_blocks))
 
 def generate_rand_bytes(num_bytes):
     return b''.join([bytes([np.random.randint(256)]) for _ in range(num_bytes)])
@@ -83,9 +96,6 @@ def get_blocksize(encryption_function):
         if len(encrypted) != prev_len:
             return len(encrypted) - prev_len
         i += 1
-
-def get_blocks(data, blocksize):
-    return [bytearray(data[start:start+blocksize]) for start in range(0, len(data), blocksize)]
 
 
 lines = []
@@ -124,22 +134,33 @@ with open('challenge17.txt', 'r') as f:
 lines = [line.strip('\n') for line in lines]
 
 IV, data = generate_token()
-print(data)
 
 # IV (xor) decrypted = plaintext
 # IV (xor) plaintext = decrypted
 
+# if last byte of plaintext is 0x01 (padding of length 1)
+# decrypted =  IV ^ plaintext
 
-print(cbc_padding_oracle(data))
-
-for i in range(1, 256):
-    data2 = copy(data)
-    data2 = xor_byte(data2, len(data2)-1, i)
-    print(data[-3:], data2[-3:])
-    if cbc_padding_oracle(data2):
-        print(i)
-
-
+block = get_blocks(data, 16)[-1]
+knownI = b''
+knownP = b''
+for _ in range(16):
+    pad_len = len(knownI) + 1
+    prefix = get_random_bytes(16 - pad_len)
+    for i in range(256):
+        tmp = prefix + bytes([i]) + bytes([ch ^ pad_len for ch in knownI])
+        sp = tmp + block[-16:]
+        if cbc_padding_oracle(sp):
+            iPrev = i ^ pad_len
+            pPrev = IV[-pad_len] ^ iPrev
+            knownI = bytes([iPrev]) + knownI
+            knownP = bytes([pPrev]) + knownP
+            break
+            
+print(knownI, knownP)
+            #iPrev = i ^ key
+            #pPrev = IV[-k] ^ iPrev
+            #return (bytes([iPrev] + list(knownI)), bytes([pPrev] + list(knownP)))
 
 
 
