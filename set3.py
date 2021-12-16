@@ -31,8 +31,6 @@ def pkcs7_unpad(data):
     for i in range(1, pad_len+1):
         if data[-i] != pad_len:
             raise InvalidPaddingException
-    print('last bytes of padded data successfully unpadded')
-    print(data[-(pad_len+1):])
     return data[:-pad_len]
 
 def get_blocks(data, blocksize):
@@ -76,9 +74,6 @@ def aes_cbc_decrypt(data, key, IV, blocksize=16):
         prev_block = block
     return pkcs7_unpad(b''.join(out_blocks))
 
-def generate_rand_bytes(num_bytes):
-    return b''.join([bytes([np.random.randint(256)]) for _ in range(num_bytes)])
-
 def get_affix_length(encryption_function):
     prev_len = len(encryption_function(b''))
     i = 1
@@ -97,16 +92,15 @@ def get_blocksize(encryption_function):
             return len(encrypted) - prev_len
         i += 1
 
-
 lines = []
 
 def generate_token():
     global key
     if key == None:
-        key = generate_rand_bytes(16)
+        key = get_random_bytes(16)
     global IV
     if IV == None:
-        IV = generate_rand_bytes(16)
+        IV = get_random_bytes(16)
     global lines
     data = codecs.decode(lines[np.random.randint(len(lines))].encode(), 'base64')
     return IV, aes_cbc_encrypt(data, key, IV)
@@ -129,40 +123,51 @@ def xor_byte(data, idx, val):
 print("SET 3")
 print("\n-----------")
 print("Challenge 17 - CBC padding oracle")
+# solution 'influenced' by
+# https://github.com/akalin/cryptopals-python3/blob/master
+
 with open('challenge17.txt', 'r') as f:
     lines = f.readlines()
 lines = [line.strip('\n') for line in lines]
 
 IV, data = generate_token()
 
-# IV (xor) decrypted = plaintext
-# IV (xor) plaintext = decrypted
-
-# if last byte of plaintext is 0x01 (padding of length 1)
-# decrypted =  IV ^ plaintext
-
-block = get_blocks(data, 16)[-1]
-knownI = b''
-knownP = b''
-for _ in range(16):
-    pad_len = len(knownI) + 1
-    prefix = get_random_bytes(16 - pad_len)
-    for i in range(256):
-        tmp = prefix + bytes([i]) + bytes([ch ^ pad_len for ch in knownI])
-        sp = tmp + block[-16:]
-        if cbc_padding_oracle(sp):
-            iPrev = i ^ pad_len
-            pPrev = IV[-pad_len] ^ iPrev
-            knownI = bytes([iPrev]) + knownI
-            knownP = bytes([pPrev]) + knownP
-            break
-            
-print(knownI, knownP)
-            #iPrev = i ^ key
-            #pPrev = IV[-k] ^ iPrev
-            #return (bytes([iPrev] + list(knownI)), bytes([pPrev] + list(knownP)))
+blocksize = 16
 
 
+pad_len = 1
+
+def single_block_cbc_attack(data, IV, ecbDecrypted, text):
+    for pad_len in range(1, 17):
+        prefix = bytearray(get_random_bytes(blocksize - pad_len))
+        suffix = bytes([ch ^ pad_len for ch in ecbDecrypted[:len(ecbDecrypted)%16]])
+        for i in range(255, -1, -1):
+            inject = prefix + bytes([i]) + suffix
+            # current ecbDecrypted byte is XORed with previous block to get plaintext (IV for first block)
+            prevBlock = data[-32:-16] if len(data) > 16 else IV
+            # inject p into data at penultimate position (this will xor it with ecbDecrypted of current block)
+            s = data[:-16] + inject + data[-16:]
+            if len(s) % 16:
+                print(len(prefix), len(suffix), len(inject))
+            # what if we stumble upon padding of length 2 and think it is '0x01'?
+            # this would probably fail ...
+            if cbc_padding_oracle(s):
+                currByte = i ^ pad_len
+                textByte = prevBlock[-pad_len] ^ currByte
+                ecbDecrypted = bytes([currByte]) + ecbDecrypted
+                text = bytes([textByte]) + text
+                break
+    return ecbDecrypted, text
+
+ecbDecrypted = b''
+text = b''
+
+while len(data) > 0:
+    ecbDecrypted, text = single_block_cbc_attack(data, IV, ecbDecrypted, text)
+    data = data[:-16]
+    print(data)
+    
+print(pkcs7_unpad(text))
 
 
 
