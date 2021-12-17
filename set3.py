@@ -1,13 +1,12 @@
 import codecs
 import numpy as np
 
-from copy import copy
-
 from itertools import cycle
 
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 
+from util import *
 
 key = None
 IV = None
@@ -42,6 +41,14 @@ def repeating_xor(bytearr1, bytearr2):
     else:
         bytearr1 = cycle(bytearr1)
     return bytes(a ^ b for a, b in zip(bytearr1, bytearr2))
+
+def xor(data1, data2):
+    if len(data1) >= len(data2):
+        data2 = data2[:len(data1)]
+    else:
+        data1 = data1[:len(data2)]
+    return bytes(a ^ b for a, b in zip(data1, data2))
+    
 
 def aes_ecb_encrypt(data, key):
     cipher = AES.new(key, AES.MODE_ECB)
@@ -103,6 +110,7 @@ def generate_token():
         IV = get_random_bytes(16)
     global lines
     data = codecs.decode(lines[np.random.randint(len(lines))].encode(), 'base64')
+    print(data)
     return IV, aes_cbc_encrypt(data, key, IV)
 
 def cbc_padding_oracle(encrypted):
@@ -119,23 +127,6 @@ def xor_byte(data, idx, val):
     data[idx] ^= val
     return bytes(data)
 
-        
-print("SET 3")
-print("\n-----------")
-print("Challenge 17 - CBC padding oracle")
-# solution 'influenced' by
-# https://github.com/akalin/cryptopals-python3/blob/master
-
-with open('challenge17.txt', 'r') as f:
-    lines = f.readlines()
-lines = [line.strip('\n') for line in lines]
-
-IV, data = generate_token()
-
-blocksize = 16
-
-
-pad_len = 1
 
 def single_block_cbc_attack(data, IV, ecbDecrypted, text):
     for pad_len in range(1, 17):
@@ -159,19 +150,85 @@ def single_block_cbc_attack(data, IV, ecbDecrypted, text):
                 break
     return ecbDecrypted, text
 
-ecbDecrypted = b''
-text = b''
+run = [False, True, True]
+        
+print("SET 3")
+if run[0]:
+    print("\n-----------")
+    print("Challenge 17 - CBC padding oracle")
+    # solution 'influenced' by
+    # https://github.com/akalin/cryptopals-python3/blob/master
 
-while len(data) > 0:
-    ecbDecrypted, text = single_block_cbc_attack(data, IV, ecbDecrypted, text)
-    data = data[:-16]
-    print(data)
+    with open('challenge17.txt', 'r') as f:
+        lines = f.readlines()
+    lines = [line.strip('\n') for line in lines]
     
-print(pkcs7_unpad(text))
+    IV, data = generate_token()
+    
+    blocksize = 16
+    
+    ecbDecrypted = b''
+    text = b''
+    while len(data) > 0:
+        ecbDecrypted, text = single_block_cbc_attack(data, IV, ecbDecrypted, text)
+        data = data[:-16]
+        print(data)
+        
+    print(pkcs7_unpad(text))
 
+def generate_keystream(nonce, key):
+    return aes_ecb_encrypt(bytes([0] * 8) + nonce.to_bytes(8, 'little'), key)
+        
+def aes_ctr(data, key, nonce):
+    out = b''
+    keystream = b''
+    while len(keystream) < len(data):
+        keystream += generate_keystream(nonce, key)
+        nonce += 1
 
+    for i in range(len(data)):
+        out += bytes([data[i] ^ keystream[i]])
+    return out
+        
 
+tmp = aes_ctr(b'test datasdasdasdasdaaaaaa', b'YELLOW SUBMARINE', 0)
+print(aes_ctr(tmp, b'YELLOW SUBMARINE', 0))
+        
+if run[1]:
+    print("\n-----------")
+    print("Challenge 18 - CTR: stream cipher mode")
+    
+    data = b"L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ=="
+    data = codecs.decode(data, 'base64')
+    key = b'YELLOW SUBMARINE'
+    print(aes_ctr(data, key, 0))
+    
+def aes_ctr_zerononce(data, key):
+    nonce = 0
+    out = b''
+    keystream = b''
+    while len(keystream) < len(data):
+        keystream += generate_keystream(nonce, key)
 
-
-
-
+    for i in range(len(data)):
+        out += bytes([data[i] ^ keystream[i]])
+    return out
+        
+if run[2]:
+    print("\n-----------")
+    print("Challenge 19 - Break fixed-nonce CTR")
+    
+    with open('challenge19.txt', 'r') as f:
+        lines = f.readlines()
+    lines = [codecs.decode(line.strip('\n').encode(), 'base64') for line in lines]
+    
+    key = b'YELLOW SUBMARINE'
+    ciphers = [aes_ctr_zerononce(line, key) for line in lines]
+    print(ciphers)
+    
+    
+    
+    
+    
+    
+    
