@@ -180,16 +180,13 @@ def generate_keystream(nonce, key):
     return aes_ecb_encrypt(bytes([0] * 8) + nonce.to_bytes(8, 'little'), key)
         
 def aes_ctr(data, key, nonce):
-    out = b''
     keystream = b''
     while len(keystream) < len(data):
         keystream += generate_keystream(nonce, key)
         nonce += 1
-
-    for i in range(len(data)):
-        out += bytes([data[i] ^ keystream[i]])
-    return out
-        
+    keystream = keystream[:len(data)]
+    out = [a ^ b for a,b in zip(data, keystream)]
+    return bytes(out)
 
 tmp = aes_ctr(b'test datasdasdasdasdaaaaaa', b'YELLOW SUBMARINE', 0)
 print(aes_ctr(tmp, b'YELLOW SUBMARINE', 0))
@@ -203,6 +200,7 @@ if run[1]:
     key = b'YELLOW SUBMARINE'
     print(aes_ctr(data, key, 0))
     
+    
 def aes_ctr_zerononce(data, key):
     nonce = 0
     out = b''
@@ -213,6 +211,8 @@ def aes_ctr_zerononce(data, key):
     for i in range(len(data)):
         out += bytes([data[i] ^ keystream[i]])
     return out
+
+
         
 if run[2]:
     print("\n-----------")
