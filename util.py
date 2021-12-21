@@ -1,6 +1,8 @@
 import numpy as np
 from collections import Counter
 
+from itertools import zip_longest
+
 ENG_CHAR_FREQ_TABLE = {
         b'a':    0.08167, b'b':    0.01492, b'c':    0.02782,
         b'd':    0.04253, b'e':    0.12700, b'f':    0.02228,
@@ -13,6 +15,30 @@ ENG_CHAR_FREQ_TABLE = {
         b'y':    0.01974, b'z':    0.00074, b' ':    0.28
 }
 
+
+
+def transpose_bytearrays(data, fillvalue='%'):
+    arr = [[chr(char) for char in line] for line in data]
+    transposed = zip_longest(*arr, fillvalue=fillvalue)
+    #transposed = zip(*arr)
+    return [bytes([ord(char) for char in line]) for line in transposed]
+
+def englishness(data):
+    try:
+        string_to_score = data.decode()
+    except Exception:
+        return 0
+    
+    c = Counter(string_to_score.lower())
+    
+    coefficient = sum(
+        np.sqrt(ENG_CHAR_FREQ_TABLE.get(char.encode(), 0) * y/len(string_to_score))
+        for char, y in c.items()
+        )
+    return coefficient
+
+# string input
+"""
 def englishness(string_to_score):
     c = Counter(string_to_score.lower())
     
@@ -21,3 +47,4 @@ def englishness(string_to_score):
         for char, y in c.items()
         )
     return coefficient
+"""
