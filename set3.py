@@ -1,5 +1,4 @@
 import codecs
-import numpy as np
 
 from itertools import cycle
 
@@ -252,7 +251,7 @@ def get_keystream_fixed_nonce_ctr(ciphers):
     
 def get_keystream_fixed_nonce_ctr2(ciphers):
     min_len = min([len(cipher) for cipher in ciphers])
-    ciphers = [cipher[:min_len] for cipher in ciphers]
+    #ciphers = [cipher[:min_len] for cipher in ciphers]
     transposed = transpose_bytearrays(ciphers, '%')
     keystream = bytearray(16)
     for pos in range(16):

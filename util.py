@@ -4,6 +4,7 @@ import numpy as np
 from collections import Counter
 
 from itertools import zip_longest
+from Crypto.PublicKey.DSA import generate
 
 ENG_CHAR_FREQ_TABLE = {
         b'a':    0.08167, b'b':    0.01492, b'c':    0.02782,
@@ -48,6 +49,12 @@ def transpose_bytearrays(data, fillvalue='%'):
     return [bytes([ord(char) for char in line]) for line in transposed]
 
 def englishness(data):
+    json_file = os.path.join('json', 'eng_char_freq.json')
+    if not os.path.exists(json_file):
+        generate_char_freq_json()
+    char_frequency = json_to_dict(json_file)
+    
+    #print(char_frequency)
     try:
         string_to_score = data.decode()
     except Exception:
@@ -56,19 +63,24 @@ def englishness(data):
     c = Counter(string_to_score.lower())
     
     coefficient = sum(
-        np.sqrt(ENG_CHAR_FREQ_TABLE_ALT.get(char.encode(), 0) * y/len(string_to_score))
+        np.sqrt(char_frequency.get(char, 0) * y/len(string_to_score))
         for char, y in c.items()
         )
     return coefficient
 
-# string input
-"""
-def englishness(string_to_score):
-    c = Counter(string_to_score.lower())
+def generate_char_freq_json():
+    with open(os.path.join('txt', 'char_freq.txt'), 'r') as f:
+        text = f.read()
     
-    coefficient = sum(
-        np.sqrt(ENG_CHAR_FREQ_TABLE.get(char.encode(), 0) * y/len(string_to_score))
-        for char, y in c.items()
-        )
-    return coefficient
-"""
+    tmp = ''.join(list([val for val in text if \
+                        (ord(val) == 32 or (ord(val) > 64 and ord(val) < 91)\
+                         or (ord(val) > 96 and ord(val) < 123))]))
+    
+    c = Counter(tmp.lower())
+    
+    size = len(tmp)
+    c = {char:occurence/size for char,occurence in c.items()}
+    
+    dict_to_json(c, 'eng_char_freq.json')
+
+
