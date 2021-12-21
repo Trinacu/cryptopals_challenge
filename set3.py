@@ -159,7 +159,7 @@ if run[0]:
     # solution 'influenced' by
     # https://github.com/akalin/cryptopals-python3/blob/master
 
-    with open('challenge17.txt', 'r') as f:
+    with open(os.path.join('txt', 'challenge17.txt'), 'r') as f:
         lines = f.readlines()
     lines = [line.strip('\n') for line in lines]
     
@@ -209,7 +209,7 @@ if run[2]:
     print("\n-----------")
     print("Challenge 19 - Break fixed-nonce CTR")
     # this works, but is not quite accurate? some bytes seem a bit off
-    with open('challenge19.txt', 'r') as f:
+    with open(os.path.join('txt', 'challenge19.txt'), 'r') as f:
         lines = f.readlines()
     lines = [codecs.decode(line.strip('\n').encode(), 'base64') for line in lines]
 
@@ -251,37 +251,28 @@ def get_keystream_fixed_nonce_ctr(ciphers):
     return keystream
     
 def get_keystream_fixed_nonce_ctr2(ciphers):
-    min_len = 1000
-    for cipher in ciphers:
-        if len(cipher) < min_len:
-            min_len = len(cipher)
+    min_len = min([len(cipher) for cipher in ciphers])
     ciphers = [cipher[:min_len] for cipher in ciphers]
     transposed = transpose_bytearrays(ciphers, '%')
-    #keystream = bytearray(len(ciphers[0]))
-    #for pos in range(len(ciphers[0])):
     keystream = bytearray(16)
     for pos in range(16):
-        max_score = 0
-        for i in range(256):
-            score = sum([englishness(repeating_xor(bytes([i]), bytes([transposed[k][pos]]))) for \
-                         k in range(len(transposed))]) / len(transposed)
-            if score > max_score:
-                keystream[pos] = i
-                max_score = score
+        scores = [englishness(repeating_xor(bytes([i]), transposed[pos])) for i in range(256)]
+        keystream[pos] = scores.index(max(scores))
     return keystream
 
 if run[3]:
     print("\n-----------")
     print("Challenge 20 - Break fixed-nonce CTR statistically")
     # seems like we solved a good portion of this in 19?
-    with open('challenge20.txt', 'r') as f:
+    with open(os.path.join('txt', 'challenge20.txt'), 'r') as f:
         lines = f.readlines()
     lines = [codecs.decode(line.strip('\n').encode(), 'base64') for line in lines]
     
     key = get_random_bytes(16)
     ciphers = [aes_ctr_zerononce(line, key) for line in lines]
     keystream = get_keystream_fixed_nonce_ctr2(ciphers)
-    print(repeating_xor(ciphers[0], keystream))
+    for cipher in ciphers:
+        print(repeating_xor(cipher, keystream))
 
 
     

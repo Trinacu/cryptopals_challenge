@@ -1,3 +1,4 @@
+import os
 import codecs
 import numpy as np
 from collections import Counter
@@ -200,7 +201,7 @@ if run[0]:
 if run[1]:
     print('\n---------------')
     print('Challenge 10: decode CBC with known key')
-    with open('challenge10.txt') as f:
+    with open(os.path.join('txt', 'challenge10.txt'), 'r') as f:
         strIn = f.read()
 
     strIn = codecs.decode(bytes(strIn, 'utf-8'), 'base64')
@@ -276,11 +277,8 @@ def decrypt_user(encrypted_user):
 
 def encrypted_profile(email):
     global key
-    print(type(email))
     if key == None:
         key = generate_rand_bytes(16)
-    print(type(key))
-    print(key)
     cipher = AES.new(key, AES.MODE_ECB)
     
     usr = encode_user(profile_for(email.replace("&", "").replace("=", ""))).encode()

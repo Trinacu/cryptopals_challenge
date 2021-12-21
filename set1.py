@@ -1,4 +1,5 @@
 import codecs
+import os
 import numpy as np
 import itertools
 
@@ -20,28 +21,28 @@ ENG_CHAR_FREQ_TABLE = {
 }
 
 def englishness(string_to_score):
-  c = Counter(string_to_score.lower())
+    c = Counter(string_to_score.lower())
   
-  coefficient = sum(
-    np.sqrt(ENG_CHAR_FREQ_TABLE.get(char.encode(), 0) * y/len(string_to_score))
-    for char, y in c.items()
-    )
-  return coefficient
+    coefficient = sum(
+        np.sqrt(ENG_CHAR_FREQ_TABLE.get(char.encode(), 0) * y/len(string_to_score))
+        for char, y in c.items()
+        )
+    return coefficient
 
 def hamming_dist(bytearr1, bytearr2):
-  xor_bytes = repeating_xor(bytearr1, bytearr2)
-  return sum(bin(byte).count("1") for byte in xor_bytes)
+    xor_bytes = repeating_xor(bytearr1, bytearr2)
+    return sum(bin(byte).count("1") for byte in xor_bytes)
   
 
 def hex2bytes(hexString):
-  return codecs.decode(hexString, 'hex')
+    return codecs.decode(hexString, 'hex')
 
 def repeating_xor(bytearr1, bytearr2):
-  if len(bytearr1) >= len(bytearr2):
-    bytearr2 = itertools.cycle(bytearr2)
-  else:
-    bytearr1 = itertools.cycle(bytearr1)
-  return bytes(a ^ b for a, b in zip(bytearr1, bytearr2))
+    if len(bytearr1) >= len(bytearr2):
+        bytearr2 = itertools.cycle(bytearr2)
+    else:
+        bytearr1 = itertools.cycle(bytearr1)
+    return bytes(a ^ b for a, b in zip(bytearr1, bytearr2))
 
 
 print("\n-----------")
@@ -54,33 +55,33 @@ print("\n-----------")
 print("Challenge 3")
 encrypted_hex="1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736"
 for i in range(256):
-  decrypted = repeating_xor(hex2bytes(encrypted_hex), [i])
-  # nasty way of handling it?
-  try:
-    decrypted = decrypted.decode()
-  except UnicodeDecodeError:
-    continue
-  score = englishness(decrypted)
-  if score > 0.8:
-    print(decrypted)
+    decrypted = repeating_xor(hex2bytes(encrypted_hex), [i])
+    # nasty way of handling it?
+    try:
+        decrypted = decrypted.decode()
+    except UnicodeDecodeError:
+        continue
+    score = englishness(decrypted)
+    if score > 0.8:
+        print(decrypted)
 
 print("\n-----------")
 print("Challenge 4")
-with open('challenge4.txt', 'r') as f:
-  lines = f.readlines()
+with open(os.path.join('txt', 'challenge4.txt'), 'r') as f:
+    lines = f.readlines()
 for line in lines:
-  # get rid of whitespace
-  line = line.rstrip()
-  for i in range(256):
-    decrypted = repeating_xor(hex2bytes(line), [i])
-    # nasty way of handling it?
-    try:
-      decrypted = decrypted.decode()
-    except UnicodeDecodeError:
-      continue
-    score = englishness(decrypted)
-    if score > 0.8:
-      print(decrypted)
+    # get rid of whitespace
+    line = line.rstrip()
+    for i in range(256):
+        decrypted = repeating_xor(hex2bytes(line), [i])
+        # nasty way of handling it?
+        try:
+            decrypted = decrypted.decode()
+        except UnicodeDecodeError:
+            continue
+        score = englishness(decrypted)
+        if score > 0.8:
+            print(decrypted)
 
 print("\n-----------")
 print("Challenge 5")
@@ -90,51 +91,51 @@ print(codecs.encode(encrypted, 'hex').decode())
 
 print("\n-----------")
 print("Challenge 6: decrypt repeating xor")
-with open('challenge6.txt', 'r') as f:
-  strIn = f.read()
+with open(os.path.join('txt', 'challenge6.txt'), 'r') as f:
+    strIn = f.read()
   
 strIn = codecs.decode(bytes(strIn, 'utf-8'), 'base64')
   
 num_blocks = 4
 best_keysizes = []
 for KEYSIZE in range(2, 41):
-  strings = [strIn[i*KEYSIZE:(i+1)*KEYSIZE] for i in range(num_blocks)]
-  dist_sum = 0
-  # build all combinations and calculate average hamming distance
-  dist = sum([hamming_dist(arr1, arr2) for arr1, arr2 in itertools.combinations(strings, 2)]) / KEYSIZE
-  best_keysizes.append([KEYSIZE, dist])
+    strings = [strIn[i*KEYSIZE:(i+1)*KEYSIZE] for i in range(num_blocks)]
+    dist_sum = 0
+    # build all combinations and calculate average hamming distance
+    dist = sum([hamming_dist(arr1, arr2) for arr1, arr2 in itertools.combinations(strings, 2)]) / KEYSIZE
+    best_keysizes.append([KEYSIZE, dist])
 
 best_keysizes = sorted(best_keysizes, key=lambda x:x[1])
 
 for keysize, hamm_dist in best_keysizes[:1]:
-  print("\nkeysize: {}\thamming dist: {:.3f}".format(keysize, hamm_dist))
-  rows = [strIn[i*keysize:(i+1)*keysize] for i in range(int(len(strIn)/keysize))]
-  #rows = [strIn[i*keysize:(i+1)*keysize] for i in range(30)]
-  arr = [[chr(char) for char in row] for row in rows]
-  key = []
-  for transposed in zip(*arr):
-    max_score = 0
-    transposed = ''.join(transposed)
-    #print(transposed)
-    for i in range(256):
-      decrypted = repeating_xor(transposed.encode(), [i])
-      # nasty way of handling it?
-      try:
-        decrypted = decrypted.decode()
-      except UnicodeDecodeError:
-        continue
-      score = englishness(decrypted)
-      if score > max_score:
-        max_score = score
-        char = i
-    #print(max_score)
-    key.append(chr(char))
-  print(''.join(key))
+    print("\nkeysize: {}\thamming dist: {:.3f}".format(keysize, hamm_dist))
+    rows = [strIn[i*keysize:(i+1)*keysize] for i in range(int(len(strIn)/keysize))]
+    #rows = [strIn[i*keysize:(i+1)*keysize] for i in range(30)]
+    arr = [[chr(char) for char in row] for row in rows]
+    key = []
+    for transposed in zip(*arr):
+        max_score = 0
+        transposed = ''.join(transposed)
+        #print(transposed)
+        for i in range(256):
+            decrypted = repeating_xor(transposed.encode(), [i])
+            # nasty way of handling it?
+            try:
+                decrypted = decrypted.decode()
+            except UnicodeDecodeError:
+                continue
+            score = englishness(decrypted)
+            if score > max_score:
+                max_score = score
+                char = i
+        #print(max_score)
+        key.append(chr(char))
+    print(''.join(key))
 
 print("\n-----------")
 print("Challenge 7: AES-ECB")
-with open('challenge7.txt', 'r') as f:
-  strIn = f.read()
+with open(os.path.join('txt', 'challenge7.txt'), 'r') as f:
+    strIn = f.read()
   
 strIn = codecs.decode(bytes(strIn, 'utf-8'), 'base64')
 key = "YELLOW SUBMARINE"
