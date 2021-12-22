@@ -2,10 +2,13 @@ import codecs
 
 from itertools import cycle
 
+import time
+
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 
 from util import *
+from numpy.random.mtrand import seed
 
 key = None
 IV = None
@@ -149,7 +152,7 @@ def single_block_cbc_attack(data, IV, ecbDecrypted, text):
                 break
     return ecbDecrypted, text
 
-run = [False, True, False, True]
+run = [False, False, False, False, False, True]
         
 print("SET 3")
 if run[0]:
@@ -274,5 +277,89 @@ if run[3]:
         print(repeating_xor(cipher, keystream))
 
 
+
+
+class MersenneTwister:
+    def __init__(self, seed):
+        self.w, self.n, self.m, self.r = 32, 624, 397, 31
+        self.a = 0x9908B0DF
+        self.u, self.d = 11, 0xFFFFFFFF
+        self.s, self.b = 7, 0x9D2C5680
+        self.t, self.c = 15, 0xEFC6000
+        self.l = 18
+        self.f = 1812433253
+    
+        self.MT = np.zeros(self.n, dtype=np.int64)
+        self.index = self.n + 1
+        self.lower_mask = (1 << self.r) - 1
+        self.upper_mask = ~self.lower_mask & ((1 << self.w) - 1)
+        
+        self.seed_mt(seed)
+    
+    def seed_mt(self, seed):
+        self.index = self.n
+        self.MT[0] = seed
+        for i in range(1, len(self.MT)):
+            # lowest w bits of (f * (MT[i-1] ^ (MT[i-1] >> (w-2))) + i)
+            self.MT[i] = ((1 << self.w) - 1) & \
+            (self.f * (self.MT[i-1] ^ (self.MT[i-1] >> (self.w-2))) + i)
+            
+    def extract_number(self):
+        if self.index >= self.n:
+            if self.index > self.n:
+                raise Exception("generator was never seeded!")
+                # or seed with a value (5489 is used in 'reference' C code)
+            self.twist()
+        y = self.MT[self.index]
+        y = y ^ ((y >> self.u) & self.d)
+        y = y ^ ((y << self.s) & self.b)
+        y = y ^ ((y << self.t) & self.c)
+        y = y ^ (y >> self.l)
+        
+        self.index += 1
+        return ((1 << self.w) - 1) & y
+            
+    def twist(self):
+        for i in range(self.n-1):
+            x = (self.MT[i] & self.upper_mask + self.MT[i+1] % self.n) & self.lower_mask
+            xA = x >> 1
+            if (x % 2) != 0: # lowest bit of x is 1
+                xA = xA ^ self.a
+            self.MT[i] = self.MT[(i+self.m) % self.n] ^ xA
+        self.index = 0
+                
+
+    
+
+    
+    # seed_mt()
+    # setting this 'idx' seems unnecessary?
+
+    
+    # extract_number()
+
+
+if run[4]:
+    print("\n-----------")
+    print("Challenge 21 - Implement MT19937 Mersenne Twister")
+    
+    gen = MersenneTwister(123)
+    print(gen.extract_number())
+    
+def generate_rand():
+    min_time = 40
+    max_time = 100
+    #time.sleep(np.random.randint(min_time, max_time))
+    # this shouldnt be an int?
+    tmp = int(time.time())
+    gen = MersenneTwister(tmp)
+    #time.sleep(np.random.randint(min_time, max_time))
+    # return lowest 32 bits
+    return 0xFFFF & gen.extract_number()
+
+if run[5]:
+    print("\n-----------")
+    print("Challenge 22 - Crack an MT19937 seed")
+    
     
     
