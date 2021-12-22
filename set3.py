@@ -12,6 +12,7 @@ from numpy.random.mtrand import seed
 
 key = None
 IV = None
+seed = None
 
 class InvalidPaddingException(Exception):
     def __init__(self, message='Invalid PKCS7 padding'):
@@ -152,7 +153,7 @@ def single_block_cbc_attack(data, IV, ecbDecrypted, text):
                 break
     return ecbDecrypted, text
 
-run = [False, False, False, False, False, True]
+run = [False, False, False, False, False, False, False, True]
         
 print("SET 3")
 if run[0]:
@@ -279,87 +280,178 @@ if run[3]:
 
 
 
-class MersenneTwister:
-    def __init__(self, seed):
-        self.w, self.n, self.m, self.r = 32, 624, 397, 31
-        self.a = 0x9908B0DF
-        self.u, self.d = 11, 0xFFFFFFFF
-        self.s, self.b = 7, 0x9D2C5680
-        self.t, self.c = 15, 0xEFC6000
-        self.l = 18
-        self.f = 1812433253
+class MT19937:
+    w, n, m, r = 32, 624, 397, 31
+    a = 0x9908B0DF
+    u, d = 11, 0xFFFFFFFF
+    s, b = 7, 0x9D2C5680
+    t, c = 15, 0xEFC6000
+    l = 18
+    f = 1812433253
     
-        self.MT = np.zeros(self.n, dtype=np.int64)
-        self.index = self.n + 1
-        self.lower_mask = (1 << self.r) - 1
-        self.upper_mask = ~self.lower_mask & ((1 << self.w) - 1)
-        
+    def __init__(self, seed):
+        self.MT = np.zeros(MT19937.n, dtype=np.int64)
+        self.index = MT19937.n + 1
+        self.lower_mask = (1 << MT19937.r) - 1
+        self.upper_mask = ~self.lower_mask & ((1 << MT19937.w) - 1)
         self.seed_mt(seed)
     
     def seed_mt(self, seed):
-        self.index = self.n
+        self.index = MT19937.n
         self.MT[0] = seed
-        for i in range(1, len(self.MT)):
+        for i in range(1, MT19937.n):
             # lowest w bits of (f * (MT[i-1] ^ (MT[i-1] >> (w-2))) + i)
-            self.MT[i] = ((1 << self.w) - 1) & \
-            (self.f * (self.MT[i-1] ^ (self.MT[i-1] >> (self.w-2))) + i)
+            self.MT[i] = ((1 << MT19937.w) - 1) & \
+            (MT19937.f * (self.MT[i-1] ^ (self.MT[i-1] >> (MT19937.w-2))) + i)
             
-    def extract_number(self):
-        if self.index >= self.n:
-            if self.index > self.n:
+    def temper(self):
+        if self.index >= MT19937.n:
+            if self.index > MT19937.n:
                 raise Exception("generator was never seeded!")
                 # or seed with a value (5489 is used in 'reference' C code)
             self.twist()
         y = self.MT[self.index]
-        y = y ^ ((y >> self.u) & self.d)
-        y = y ^ ((y << self.s) & self.b)
-        y = y ^ ((y << self.t) & self.c)
-        y = y ^ (y >> self.l)
+        # MT19937.d is 0xFFFFFFFF so this & doesn't change anything
+        y = y ^ ((y >> MT19937.u) & MT19937.d)
+        y = y ^ ((y << MT19937.s) & MT19937.b)
+        y = y ^ ((y << MT19937.t) & MT19937.c)
+        y = y ^ (y >> MT19937.l)
         
         self.index += 1
-        return ((1 << self.w) - 1) & y
+        # return last w bits
+        return ((1 << MT19937.w) - 1) & y
+        
             
     def twist(self):
-        for i in range(self.n-1):
-            x = (self.MT[i] & self.upper_mask + self.MT[i+1] % self.n) & self.lower_mask
+        for i in range(MT19937.n-1):
+            x = (self.MT[i] & self.upper_mask + self.MT[i+1] % MT19937.n) & self.lower_mask
             xA = x >> 1
-            if (x % 2) != 0: # lowest bit of x is 1
-                xA = xA ^ self.a
-            self.MT[i] = self.MT[(i+self.m) % self.n] ^ xA
+            if (x % 2) != 0: # if lowest bit of x is 1
+                xA = xA ^ MT19937.a
+            self.MT[i] = self.MT[(i+MT19937.m) % MT19937.n] ^ xA
         self.index = 0
-                
-
-    
-
-    
-    # seed_mt()
-    # setting this 'idx' seems unnecessary?
-
-    
-    # extract_number()
 
 
 if run[4]:
     print("\n-----------")
     print("Challenge 21 - Implement MT19937 Mersenne Twister")
     
-    gen = MersenneTwister(123)
-    print(gen.extract_number())
+    gen = MT19937(123)
+    print(gen.temper())
     
 def generate_rand():
     min_time = 40
     max_time = 100
-    #time.sleep(np.random.randint(min_time, max_time))
+    time.sleep(np.random.randint(min_time, max_time))
     # this shouldnt be an int?
-    tmp = int(time.time())
-    gen = MersenneTwister(tmp)
-    #time.sleep(np.random.randint(min_time, max_time))
+    seed = int(time.time())
+    gen = MT19937(seed)
+    time.sleep(np.random.randint(min_time, max_time))
     # return lowest 32 bits
-    return 0xFFFF & gen.extract_number()
+    return gen.temper(), seed
+
+def compare_seeds(seed1, seed2):
+    N = 10000
+    gen1 = MT19937(seed1)
+    gen2 = MT19937(seed2)
+    for i in range(N):
+        if gen1.temper() != gen2.temper():
+            return False
+    return True
 
 if run[5]:
     print("\n-----------")
     print("Challenge 22 - Crack an MT19937 seed")
+    rng, seed = generate_rand()
+    print('original seed: {}'.format(seed))
+    for i in range(int(time.time()), int(time.time())-300, -1):
+        gen = MT19937(i)
+        if gen.temper() == rng:
+            # first number matches, let's verify!
+            if compare_seeds(i, seed):
+                print('found seed! seed={}'.format(i))
+                break
+
+
+# these 2 functions are stolen from
+# https://jazzy.id.au/2010/09/22/cracking_random_number_generators_part_3.html
+def unshift_right_xor(value, shift):
+    i = 0
+    result = 0
+    while (i * shift < 32):
+        # MUST & with 0xFFFFFFFF so we don't get numbers higher than 32bit!
+        partMask = ((((1 << MT19937.w) - 1) << (32 - shift)) & 0xFFFFFFFF) >> (shift * i)
+        part = value & partMask
+        value ^= part >> shift
+        result |= part
+        i += 1
+    return result
+
+def unshift_left_xor_mask(value, shift, mask):
+    i = 0
+    result = 0
+    while (i * shift < 32):
+        partMask = (((1 << MT19937.w) - 1) >> (32 - shift)) << (shift * i)
+        part = value & partMask
+        value ^= (part << shift) & mask
+        result |= part
+        i += 1
+    return result
+
+def untemper(val):
+    val = unshift_right_xor(val, MT19937.l)
+    val = unshift_left_xor_mask(val, MT19937.t, MT19937.c)
+    val = unshift_left_xor_mask(val, MT19937.s, MT19937.b)
+    val = unshift_right_xor(val, MT19937.u)
+    return val
+
+if run[6]:
+    print("\n-----------")
+    print("Challenge 23 - Clone MT19937 from its output")
+
+    gen = MT19937(np.random.randint(1, 124245))
+    X = np.zeros(MT19937.n, dtype=np.int64)
+    for i in range(MT19937.n):
+        X[i] = untemper(gen.temper())
+
+    gen2 = MT19937(0)
+    gen2.MT = X
+
+    success = True
+    for _ in range(1000):
+        if (gen.temper() != gen2.temper()):
+            success = False
+    if success:
+        print('successfully made a MT clone from {} outputs!'.format(MT19937.n))
+
     
+def encrypt_MT(data):
+    global seed
+    if (seed == None):
+        seed = np.random.randint(2**17-1)
+        #print('{:016b}'.format(seed))
+    MT_gen = MT19937(seed)
+    keystream = bytes([MT_gen.temper() & 0xFF for _ in range(len(data))])
+    return bytes([a ^ b for a, b in zip(keystream, data)])
+
+
+def encrypt_c24(data):
+    # is this supposed to be a fixed random length or like this?
+    data = get_random_bytes(np.random.randint(4, 20)) + data
+    return encrypt_MT(data)
+
+if run[7]:
+    print("\n-----------")
+    print("Challenge 24 - Create MT19937 stream cipher and break it")
+
+    cipher = encrypt_c24(b'A' * 14)
+    print(cipher)
+    # recover the seed from the cipher??
+
+
+
     
-    
+
+
+
+        
