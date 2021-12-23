@@ -3,31 +3,12 @@ import os
 import numpy as np
 import itertools
 
+from util import *
+
 from collections import Counter
 
 from Crypto.Cipher import AES
 from Crypto.Util import Padding
-
-ENG_CHAR_FREQ_TABLE = {
-    b'a':  0.08167, b'b':  0.01492, b'c':  0.02782,
-    b'd':  0.04253, b'e':  0.12700, b'f':  0.02228,
-    b'g':  0.02015, b'h':  0.06094, b'i':  0.06966,
-    b'j':  0.00153, b'k':  0.00772, b'l':  0.04025,
-    b'm':  0.02406, b'n':  0.06749, b'o':  0.07507,
-    b'p':  0.01929, b'q':  0.00095, b'r':  0.05987,
-    b's':  0.06327, b't':  0.09056, b'u':  0.02758,
-    b'v':  0.00978, b'w':  0.02360, b'x':  0.00150,
-    b'y':  0.01974, b'z':  0.00074, b' ':  0.28
-}
-
-def englishness(string_to_score):
-    c = Counter(string_to_score.lower())
-  
-    coefficient = sum(
-        np.sqrt(ENG_CHAR_FREQ_TABLE.get(char.encode(), 0) * y/len(string_to_score))
-        for char, y in c.items()
-        )
-    return coefficient
 
 def hamming_dist(bytearr1, bytearr2):
     xor_bytes = repeating_xor(bytearr1, bytearr2)
@@ -36,13 +17,6 @@ def hamming_dist(bytearr1, bytearr2):
 
 def hex2bytes(hexString):
     return codecs.decode(hexString, 'hex')
-
-def repeating_xor(bytearr1, bytearr2):
-    if len(bytearr1) >= len(bytearr2):
-        bytearr2 = itertools.cycle(bytearr2)
-    else:
-        bytearr1 = itertools.cycle(bytearr1)
-    return bytes(a ^ b for a, b in zip(bytearr1, bytearr2))
 
 
 print("\n-----------")
@@ -61,7 +35,7 @@ for i in range(256):
         decrypted = decrypted.decode()
     except UnicodeDecodeError:
         continue
-    score = englishness(decrypted)
+    score = englishness(decrypted.encode())
     if score > 0.8:
         print(decrypted)
 
@@ -79,7 +53,7 @@ for line in lines:
             decrypted = decrypted.decode()
         except UnicodeDecodeError:
             continue
-        score = englishness(decrypted)
+        score = englishness(decrypted.encode())
         if score > 0.8:
             print(decrypted)
 
@@ -124,7 +98,7 @@ for keysize, hamm_dist in best_keysizes[:1]:
                 decrypted = decrypted.decode()
             except UnicodeDecodeError:
                 continue
-            score = englishness(decrypted)
+            score = englishness(decrypted.encode())
             if score > max_score:
                 max_score = score
                 char = i

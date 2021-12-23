@@ -4,7 +4,10 @@ import numpy as np
 from collections import Counter
 
 from itertools import zip_longest
+from itertools import cycle
 from Crypto.PublicKey.DSA import generate
+
+from Crypto.Cipher import AES
 
 ENG_CHAR_FREQ_TABLE = {
         b'a':    0.08167, b'b':    0.01492, b'c':    0.02782,
@@ -16,18 +19,6 @@ ENG_CHAR_FREQ_TABLE = {
         b's':    0.06327, b't':    0.09056, b'u':    0.02758,
         b'v':    0.00978, b'w':    0.02360, b'x':    0.00150,
         b'y':    0.01974, b'z':    0.00074, b' ':    0.28
-}
-
-ENG_CHAR_FREQ_TABLE_ALT = {
-        b'a':    0.07447, b'b':    0.01631, b'c':    0.02785,
-        b'd':    0.03782, b'e':    0.09747, b'f':    0.01659,
-        b'g':    0.02041, b'h':    0.04130, b'i':    0.06498,
-        b'j':    0.00082, b'k':    0.00805, b'l':    0.03741,
-        b'm':    0.02253, b'n':    0.05973, b'o':    0.05495,
-        b'p':    0.01727, b'q':    0.00048, b'r':    0.04997,
-        b's':    0.05215, b't':    0.07386, b'u':    0.02116,
-        b'v':    0.00785, b'w':    0.01515, b'x':    0.00198,
-        b'y':    0.01406, b'z':    0.00048, b' ':    0.16491
 }
 
 def dict_to_json(dictionary, filename):
@@ -49,6 +40,8 @@ def transpose_bytearrays(data, fillvalue='%'):
     return [bytes([ord(char) for char in line]) for line in transposed]
 
 def englishness(data):
+    if isinstance(data, str):
+        data = data.encode()
     json_file = os.path.join('json', 'eng_char_freq.json')
     if not os.path.exists(json_file):
         generate_char_freq_json()
@@ -84,3 +77,59 @@ def generate_char_freq_json():
     dict_to_json(c, 'eng_char_freq.json')
 
 
+
+class InvalidPaddingException(Exception):
+    def __init__(self, message='Invalid PKCS7 padding'):
+        super(InvalidPaddingException, self).__init__(message)
+
+def pkcs7_pad(data, blocksize):
+    pad_len = (blocksize - (len(data) % blocksize)) % blocksize if len(data)%blocksize else blocksize
+    return data + pad_len * bytes([pad_len])
+
+def pkcs7_unpad(data):
+    pad_len = 1
+    last_byte = bytearray(data)[-pad_len]
+    while True:
+        if bytearray(data)[-pad_len] != last_byte:
+            pad_len -= 1
+            break
+        pad_len += 1
+    for i in range(1, pad_len+1):
+        if data[-i] != pad_len:
+            raise InvalidPaddingException
+    return data[:-pad_len]
+
+def get_blocks(data, blocksize):
+    return [data[start:start+blocksize] for start in range(0, len(data), blocksize)]
+
+def repeating_xor(bytearr1, bytearr2):
+    if len(bytearr1) >= len(bytearr2):
+        bytearr2 = cycle(bytearr2)
+    else:
+        bytearr1 = cycle(bytearr1)
+    return bytes(a ^ b for a, b in zip(bytearr1, bytearr2))
+
+def xor(data1, data2):
+    if len(data1) >= len(data2):
+        data2 = data2[:len(data1)]
+    else:
+        data1 = data1[:len(data2)]
+    return bytes(a ^ b for a, b in zip(data1, data2))
+
+def aes_ecb_encrypt(bytearr, key):
+    cipher = AES.new(key, AES.MODE_ECB)
+    return cipher.encrypt(bytearr)
+
+def aes_ecb_decrypt(bytearr, key):
+    cipher = AES.new(key, AES.MODE_ECB)
+    return cipher.decrypt(bytearr)
+
+def generate_keystream(key, nonce):
+    return aes_ecb_encrypt(bytes([0] * 8) + nonce.to_bytes(8, 'little'), key)
+        
+def aes_ctr(data, key, nonce):
+    keystream = b''
+    while len(keystream) < len(data):
+        keystream += generate_keystream(key, nonce)
+        nonce += 1
+    return bytes([a ^ b for a,b in zip(data, keystream[:len(data)])])

@@ -1,6 +1,6 @@
 import codecs
 
-from itertools import cycle
+import struct
 
 import time
 
@@ -14,43 +14,6 @@ key = None
 IV = None
 seed = None
 
-class InvalidPaddingException(Exception):
-    def __init__(self, message='Invalid PKCS7 padding'):
-        super(InvalidPaddingException, self).__init__(message)
-
-def pkcs7_pad(data, blocksize):
-    pad_len = (blocksize - (len(data) % blocksize)) % blocksize if len(data)%blocksize else blocksize
-    return data + pad_len * bytes([pad_len])
-
-def pkcs7_unpad(data):
-    pad_len = 1
-    last_byte = bytearray(data)[-pad_len]
-    while True:
-        if bytearray(data)[-pad_len] != last_byte:
-            pad_len -= 1
-            break
-        pad_len += 1
-    for i in range(1, pad_len+1):
-        if data[-i] != pad_len:
-            raise InvalidPaddingException
-    return data[:-pad_len]
-
-def get_blocks(data, blocksize):
-    return [data[start:start+blocksize] for start in range(0, len(data), blocksize)]
-
-def repeating_xor(bytearr1, bytearr2):
-    if len(bytearr1) >= len(bytearr2):
-        bytearr2 = cycle(bytearr2)
-    else:
-        bytearr1 = cycle(bytearr1)
-    return bytes(a ^ b for a, b in zip(bytearr1, bytearr2))
-
-def xor(data1, data2):
-    if len(data1) >= len(data2):
-        data2 = data2[:len(data1)]
-    else:
-        data1 = data1[:len(data2)]
-    return bytes(a ^ b for a, b in zip(data1, data2))
     
 
 def aes_ecb_encrypt(data, key):
@@ -153,7 +116,7 @@ def single_block_cbc_attack(data, IV, ecbDecrypted, text):
                 break
     return ecbDecrypted, text
 
-run = [False, False, False, False, False, False, False, True]
+run = [False, False, True, False, False, False, False, True]
         
 print("SET 3")
 if run[0]:
@@ -179,16 +142,6 @@ if run[0]:
         
     print(pkcs7_unpad(text))
 
-def generate_keystream(nonce, key):
-    return aes_ecb_encrypt(bytes([0] * 8) + nonce.to_bytes(8, 'little'), key)
-        
-def aes_ctr(data, key, nonce):
-    keystream = b''
-    while len(keystream) < len(data):
-        keystream += generate_keystream(nonce, key)
-        nonce += 1
-    return bytes([a ^ b for a,b in zip(data, keystream[:len(data)])])
-
         
 if run[1]:
     print("\n-----------")
@@ -204,7 +157,7 @@ def aes_ctr_zerononce(data, key):
     nonce = 0
     keystream = b''
     while len(keystream) < len(data):
-        keystream += generate_keystream(nonce, key)
+        keystream += generate_keystream(key, nonce)
     return bytes([a ^ b for a,b in zip(data, keystream[:len(data)])])
 
 
@@ -318,8 +271,8 @@ class MT19937:
         y = y ^ (y >> MT19937.l)
         
         self.index += 1
-        # return last w bits
-        return ((1 << MT19937.w) - 1) & y
+        # return last w bits (also convert to int32?)
+        return int(((1 << MT19937.w) - 1) & y)
         
             
     def twist(self):
@@ -424,34 +377,64 @@ if run[6]:
     if success:
         print('successfully made a MT clone from {} outputs!'.format(MT19937.n))
 
-    
-def encrypt_MT(data):
-    global seed
-    if (seed == None):
-        seed = np.random.randint(2**17-1)
-        #print('{:016b}'.format(seed))
-    MT_gen = MT19937(seed)
-    keystream = bytes([MT_gen.temper() & 0xFF for _ in range(len(data))])
-    return bytes([a ^ b for a, b in zip(keystream, data)])
 
+class MT19937_cipher():
+    def __init__(self, key):
+        self._rng = MT19937(key)
+
+    def encrypt(self, data):
+        if len(data) == 0:
+            return b''
+        keystream = b''
+        while len(keystream) < len(data):
+            keystream += struct.pack('<L', self._rng.temper())
+            
+        keystream = keystream[:len(data)]
+        return bytes([a ^ b for a, b in zip(keystream, data)])
 
 def encrypt_c24(data):
-    # is this supposed to be a fixed random length or like this?
+    global seed
+    if (seed == None):
+        # 16-bit seed
+        seed = np.random.randint(2**16)
+    cipher = MT19937_cipher(seed)
+    
     data = get_random_bytes(np.random.randint(4, 20)) + data
-    return encrypt_MT(data)
+    return cipher.encrypt(data)
+
+def find_seed(encryption_function):
+    text = b'A' * 14
+    cipher = encryption_function(text)
+    prefix_len = len(cipher) - len(text)
+    for seed in range(2**16):
+        gen = MT19937_cipher(seed)
+        if gen.encrypt(b'A' * len(cipher))[prefix_len:] == cipher[prefix_len:]:
+            return seed
+    raise Exception("not expected")
+
+def generate_token(email):
+    gen = MT19937_cipher(int(time.time()))
+    return gen.encrypt(b'A' * np.random.randint(4, 20) + email.encode())
+
+def find_token_timestamp(token, email):
+    prefix_len = len(token) - len(email)
+    for seed in range(int(time.time()), int(time.time())-600, -1):
+        gen = MT19937_cipher(seed)
+        if gen.encrypt(b'A' * prefix_len + email.encode())[prefix_len:] == token[prefix_len:]:
+            return seed
 
 if run[7]:
     print("\n-----------")
     print("Challenge 24 - Create MT19937 stream cipher and break it")
 
-    cipher = encrypt_c24(b'A' * 14)
-    print(cipher)
-    # recover the seed from the cipher??
+    seed = find_seed(encrypt_c24)
+    print('found seed: {}'.format(seed))
+    email = 'test@mail.com'
+    token = generate_token(email)
+    timestamp = find_token_timestamp(token, email)
+    print('found timestamp: {}'.format(timestamp))
+
 
 
 
     
-
-
-
-        
