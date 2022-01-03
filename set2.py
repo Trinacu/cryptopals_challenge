@@ -358,6 +358,7 @@ def k_v_parse_c16(string):
 
 def check_admin_c16(data):
     data = decrypt_userdata_raw(data)
+    print(data)
     return data.find(b';admin=true;') != -1
 
 if run[7]:
