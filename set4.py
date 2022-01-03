@@ -6,12 +6,11 @@ from Crypto.Random import get_random_bytes
 
 from util import *
 
-
 run = [False, True, True]
 
 key = None
 
-# MISSING SOME CHALLENGES: 30 - 32
+# MISSING SOME CHALLENGES: 29 - 32
 
 print("SET 4")
 
