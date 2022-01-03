@@ -34,18 +34,26 @@ if run[0]:
         print('incorrect')
 
 class Entity():
-    def __init__(self, channel, name, p, g):
+    def __init__(self, channel, name):
         self.name = name
-        self.p = p
-        self.g = g
-        self.priv_key = np.random.randint(2**8) % self.p
-        self.own_publ_key = (self.g ** self.priv_key) % self.p
+        self.p = None
+        self.g = None
+        self.priv_key = None
+        self.own_publ_key = None
         self.other_publ_key = None
         
         self._data = None
         self.message = ""
 
         self.channel = channel
+
+    def init_keys(self, p, g):
+        self.p = p
+        self.g = g
+        # don't create keys for middle to imitate as being in the middle
+        if self.name != 'middle':
+            self.priv_key = np.random.randint(2**8) % self.p
+            self.own_publ_key = (self.g ** self.priv_key) % self.p
 
     def send_message(self, msg):
         other = self.channel.A if self == self.channel.B else self.channel.B
@@ -67,8 +75,7 @@ class Entity():
             if len(data) != 3:
                 print('invalid message list length!')
                 return
-            self.p = data[0]
-            self.g = data[1]
+            self.init_keys(data[0], data[1])
             self.other_publ_key = data[2]
         # received key
         if isinstance(data, int):
@@ -76,22 +83,24 @@ class Entity():
         # received message
         if isinstance(data, bytes):
             self._data = data
-            # separate data and IV and decrypt
-            IV = self._data[-16:]
-            data = self._data[:-16]
-            s = (self.other_publ_key ** self.priv_key) % self.p
-            sha = SHA1Hash(s.to_bytes(256, 'little'))
-            key = bytes.fromhex(sha.digest())[:16]
-            self.message = aes_cbc_decrypt(data, key, IV)
+            if self.priv_key != None:
+                self.decrypt_msg()
+
+    def decrypt_msg(self):
+        # separate data and IV and decrypt
+        IV = self._data[-16:]
+        data = self._data[:-16]
+        s = (self.other_publ_key ** self.priv_key) % self.p
+        sha = SHA1Hash(s.to_bytes(256, 'little'))
+        key = bytes.fromhex(sha.digest())[:16]
+        self.message = aes_cbc_decrypt(data, key, IV)
 
 class DH_Comm():
     def __init__(self, p, g, nameA, nameB):
-        self.A = Entity(self, nameA, p, g)
-        self.B = Entity(self, nameB, p, g)
+        self.A = Entity(self, nameA)
+        self.B = Entity(self, nameB)
         self.p = p
         self.g = g
-
-
 
 if run[1]:
     print("\n-----------")
@@ -102,16 +111,6 @@ if run[1]:
     #p = 37
     #g = 5
     data = b'test'
-
-    """
-    channelAB = DH_Comm(p, g, "Alice", "Bob")
-    print("Message: {}".format(channelAB.A.message))
-    channelAB.A.send_data([p, g, channelAB.A.own_publ_key])
-    channelAB.B.send_data(channelAB.B.own_publ_key)
-    channelAB.A.send_message(b'test')
-    channelAB.B.send_message(channelAB.B.message)
-    print("Message: {}".format(channelAB.A.message))
-    """
     
     # M - middle man with 2 channels
     channelAM = DH_Comm(p, g, "Alice", "middle")
@@ -120,9 +119,13 @@ if run[1]:
     B = channelMB.B
     MA = channelAM.B
     MB = channelMB.A
+
+    A.init_keys(p, g)
     print("A Message: {}".format(A.message))
     
     A.send_data([p, g, channelAM.A.own_publ_key])
+    # sending p instead A (publ_key) forces B to get s = 0 due to "s = (p**b) % p"
+    # meaning input to SHA1 is all zeroes so we can recreate the cbc key
     MB.send_data([p, g, p])
     B.send_data(B.own_publ_key)
     MA.send_data(p)
@@ -134,8 +137,18 @@ if run[1]:
     print("A Message: {}".format(A.message))
 
     
+    IV = MB._data[-16:]
+    data = MB._data[:-16]
+    sha = SHA1Hash((0).to_bytes(256, 'little'))
+    key = bytes.fromhex(sha.digest())[:16]
+    print("M Message: {}".format(aes_cbc_decrypt(data, key, IV)))
 
-    print("M Message: {}".format(channelAM.B.message))
+
+    
+
+
+
+
 
 
 
