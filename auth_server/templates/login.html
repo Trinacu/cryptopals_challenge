@@ -1,0 +1,50 @@
+<html>
+   <head>
+      <style type="text/css">
+      <!--
+       .tab { margin-left: 40px; }
+      -->
+      </style>
+   </head>
+   <body>
+      <form action="http://localhost:5000/login" method="post">
+         <p>Login:</p>
+         <p>Username:&emsp;<input type="text" name="email" id="username"/></p>
+         <p>Password:&emsp;<input type="text" name="publ_key"/></p>
+         <p><input type="submit" value="submit"/></p>
+         <button type="button" onclick="testFun();">testFun</button>
+         <p>
+      </form>
+
+      <script>
+         function testFun() {
+            let user = document.getElementById("username").value;
+            post("http://localhost:5000/post_id_pubkey", {email:user, publ_key:123})
+         }
+
+         function post(path, params, method='post') {
+            const form = document.createElement('form');
+            form.method = method;
+            form.action = path;
+
+            for (const key in params) {
+              if (params.hasOwnProperty(key)) {
+                const hiddenField = document.createElement('input');
+                hiddenField.type = 'hidden';
+                hiddenField.name = key;
+                hiddenField.value = params[key];
+
+                form.appendChild(hiddenField);
+              }
+            }
+
+         document.body.appendChild(form);
+         form.submit();
+       }
+
+
+
+      </script>
+   </body>
+
+</html>

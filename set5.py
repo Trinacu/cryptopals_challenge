@@ -3,6 +3,7 @@ import codecs
 
 import util
 
+import json
 import numpy as np
 
 #from Crypto.Cipher import AES
@@ -10,7 +11,9 @@ from Crypto.Random import get_random_bytes
 
 import hashlib
 
-run = [False, False, False, True]
+import requests
+
+run = [False, False, False, False, False, False, False, True]
 
 key = None
 
@@ -297,10 +300,150 @@ if run[3]:
         print('failed authentication')
     
     
+if run[4]:
+    print("\n-----------")
+    print("Challenge 37 - Break SRP with a zero key")
+    N = 123
+    g = 2
+    k = 3
 
+    I = 'test@email.com'
+    P = '1337password'
+    # init N, g, k, mail, pwd - not the best way to send pwd in GET request :/
+    ret = requests.get('http://localhost:5000',
+                       params={'N':123, 'g':2, 'k':3,
+                               'email':I,
+                               'password':P})
+    if ret.status_code == 200:
+        d = json.loads(ret.content.decode())
+        if (d['N']==N and d['g']==g and d['k']==k):
+            # clientside processing?
+            
+            a = np.random.randint(2*16)
+            A = pow(g, a, N)
+            
+            ret = requests.post('http://localhost:5000/login',
+                                {'email':I, 'publ_key':A})
+            d = json.loads(ret.content.decode())
+            B = d['publ_key']
+            salt = bytes(int(num) for num in d['salt'].split(','))
 
+            uH = hashlib.sha256(str(A).encode() + str(B).encode()).hexdigest()
+            u = int(uH, 16)
 
-
-
+            #P = 'new stuff'
+            xH = hashlib.sha256(salt + P.encode()).hexdigest()
+            x = int(xH, 16)
+            base = B - k * pow(g, x, N)
+            S = pow(base, a + u * x, N)
+            K = hashlib.sha256(str(S).encode()).hexdigest()
+            
+            ret = requests.post('http://localhost:5000/authenticate',
+                                {'username':I, 'hmac':hashlib.sha256(K.encode()+salt).hexdigest()})
+            
+            #res = requests.post('http://localhost:5000/login',
+            #                    {'username':'test@email.com', 'password':'1337password'})
+        
+    print('this is not solved ...')
 
     
+if run[5]:
+    print("\n-----------")
+    print("Challenge 38 - ?")
+    print('skipped ...')
+
+
+primes = []
+def gen_prime(start, num_primes):
+    global primes
+    if len(primes) < num_primes:
+        num = start if len(primes) == 0 else primes[-1]+1
+        while (len(primes) < num_primes):
+            isPrime = True
+            for x in range(2, int(np.sqrt(num))):
+                if num % x == 0:
+                    isPrime = False
+                    break
+            if isPrime:
+                primes.append(num)
+            num += 1
+    print('choosing from list of {} primes [{}...{}]'.format(len(primes), primes[0], primes[-1]))
+    return primes[np.random.randint(len(primes))]
+
+def modinv(a, m):
+    for x in range(1, m):
+        if ((a%m)*(x%m) % m == 1):
+            return x
+    raise Exception('modular inverse doesnt exist')
+
+def encrypt(text, public_key):
+    e, n = public_key
+    #val = int(text.encode('utf-8').hex(), 16)
+    val = int.from_bytes(text.encode('utf-8'), 'big')
+    if val < 0 or val >= n:
+        raise ValueError(str(val) + ' out of range!')
+    return pow(val, e, n)
+
+def decrypt(val, private_key):
+    d, n = private_key
+    if val < 0 or val >= n:
+        raise ValueError(str(val) + ' out of range!')
+    val = pow(val, d, n)
+    #text = bytes.fromhex('{:x}'.format(val))
+    text = data = val.to_bytes((val.bit_length() + 7) // 8, byteorder='big')#.decode()
+    return text
+
+if run[6]:
+    print("\n-----------")
+    print("Challenge 39 - Implement RSA")
+
+
+    e = 3
+    while True:
+        try:
+            # generate primes until we get a valid d
+            p = gen_prime(60000000000000, 20)
+            q = gen_prime(60000000000000, 30)
+            n = p * q
+            et = (p-1) * (q-1)
+            d = pow(e, -1, et)
+            break
+        except ValueError:
+            continue
+
+    public_key = [e, n]
+    private_key = [d, n]
+
+
+
+    text = 'test abc'
+    print(text)
+    val = int(text.encode('utf-8').hex(), 16)
+    #val = text.encode('utf-8').hex()
+    print(val)
+
+    val = val * 4
+    val = val//4
+    
+    #print('{:x}'.format(val))
+    print(hex(val))
+    print(bytes.fromhex(hex(val)[2:]))
+    
+
+
+    print('-----------------------------')
+    
+    tmp = 'test enkrip'
+    print(tmp)
+    test = encrypt(tmp, public_key)
+    print(test)
+    test2 = decrypt(test, private_key)
+    print(test2)
+
+
+if run[7]:
+    print("\n-----------")
+    print("Challenge 40 - Implement E=3 RSA broadcast attack")
+    
+
+    print("Still to solve ...")
