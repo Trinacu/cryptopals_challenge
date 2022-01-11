@@ -6,6 +6,8 @@ import util
 import json
 import numpy as np
 
+import random
+
 #from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 
@@ -13,7 +15,7 @@ import hashlib
 
 import requests
 
-run = [False, False, False, False, False, False, False, True]
+run = [False, False, False, False, False, False, True, True]
 
 key = None
 
@@ -22,11 +24,11 @@ print("SET 5")
 
 def diffie_hellman_c33(p, g):
     a = np.random.randint(2**16) % p
-    A = (g**a) % p
+    A = pow(g, a, p)
     b = np.random.randint(2**16) % p
-    B = (g**b) % p
+    B = pow(g, b, p)
 
-    return (B**a) % p, (A**b) % p
+    return pow(B, a, p), pow(A, b, p)
 
 if run[0]:
     print("\n-----------")
@@ -39,6 +41,22 @@ if run[0]:
         print('correct')
     else:
         print('incorrect')
+
+    big_p = """ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024\
+e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd\
+3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec\
+6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f\
+24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361\
+c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552\
+bb9ed529077096966d670c354e4abc9804f1746c08ca237327fff\
+fffffffffffff"""
+    big_p = int(big_p, 16)
+    s1, s2 = diffie_hellman_c33(big_p, g)
+    if s1 == s2:
+        print('correct')
+    else:
+        print('incorrect')
+
 
 class Entity():
     def __init__(self, channel, name):
@@ -114,6 +132,8 @@ if run[1]:
     g = 5
     data = b'test'
 
+
+    os.system(os.path.join("auth_server","socket_server.py"))
     
     channel = DH_Comm("Alice", "Bob")
     A = channel.A
@@ -370,13 +390,22 @@ def gen_prime(start, num_primes):
     print('choosing from list of {} primes [{}...{}]'.format(len(primes), primes[0], primes[-1]))
     return primes[np.random.randint(len(primes))]
 
+def get_prime():
+    with open('primes.txt', 'r') as f:
+        data = f.read()
+    if data == '':
+        data = []
+    else:
+        data = [int(val) for val in data.split(',\n')]
+    return data[np.random.randint(len(data))]
+
 def modinv(a, m):
     for x in range(1, m):
         if ((a%m)*(x%m) % m == 1):
             return x
     raise Exception('modular inverse doesnt exist')
 
-def encrypt(text, public_key):
+def rsa_encrypt(text, public_key):
     e, n = public_key
     #val = int(text.encode('utf-8').hex(), 16)
     val = int.from_bytes(text.encode('utf-8'), 'big')
@@ -384,7 +413,7 @@ def encrypt(text, public_key):
         raise ValueError(str(val) + ' out of range!')
     return pow(val, e, n)
 
-def decrypt(val, private_key):
+def rsa_decrypt(val, private_key):
     d, n = private_key
     if val < 0 or val >= n:
         raise ValueError(str(val) + ' out of range!')
@@ -393,57 +422,124 @@ def decrypt(val, private_key):
     text = data = val.to_bytes((val.bit_length() + 7) // 8, byteorder='big')#.decode()
     return text
 
+
+def miller_rabin(n, k):
+    if n == 2 or n == 3:
+        return True
+    # even numbers (less 2) are not prime
+    if not n & 1:
+        return False
+
+    r, s = 0, n - 1
+    while not s & 1:
+        r += 1
+        s //= 2
+    for _ in range(k):
+        a = random.randrange(2, n - 1)
+        x = pow(a, s, n)
+        if x == 1 or x == n - 1:
+            continue
+        for _ in range(r - 1):
+            x = pow(x, 2, n)
+            if x == n - 1:
+                break
+        else:
+            return False
+    return True
+
+small_primes = [2,3,5,7,11,13,17,19]
+def small_prime_factor(p):
+    global small_primes
+    for x in small_primes:
+        if p % x == 0:
+            return True
+    return False
+
+def get_probable_prime(bitcount):
+    while True:
+        p = random.randint(2**(bitcount - 1), 2**bitcount - 1)
+        if not small_prime_factor(p) and miller_rabin(p, 16):
+            return p
+
+def get_rsa_keys(keysize):
+    e = 3
+    # seems like not doing the +1 gives correct keysize
+    bitcount = (keysize + 1) // 2# + 1
+
+    p = 7
+    while (p - 1) % e == 0:
+        p = get_probable_prime(bitcount)
+
+    q = p
+    while q == p or (q - 1) % e == 0:
+        q = get_probable_prime(bitcount)
+
+    n = p * q
+    et = (p-1) * (q-1)
+    d = pow(e, -1, et)
+    print('{:0256b}'.format(n))
+    print('key bit length: {} bits'.format(n.bit_length()))
+    #except ValueError:
+    #continue
+    # public key, private key
+    return [e, n], [d, n]
+
+
 if run[6]:
     print("\n-----------")
     print("Challenge 39 - Implement RSA")
 
+    public_key, private_key = get_rsa_keys(256)
 
-    e = 3
-    while True:
-        try:
-            # generate primes until we get a valid d
-            p = gen_prime(60000000000000, 20)
-            q = gen_prime(60000000000000, 30)
-            n = p * q
-            et = (p-1) * (q-1)
-            d = pow(e, -1, et)
-            break
-        except ValueError:
-            continue
+    text = 'encryption_test'
+    print('plaintext length: {}'.format(len(text)))
+    test = rsa_encrypt(text, public_key)
+    test2 = rsa_decrypt(test, private_key)
+    if text.encode() == test2:
+        print('success')
+    else:
+        print('fail')
 
-    public_key = [e, n]
-    private_key = [d, n]
-
-
-
-    text = 'test abc'
-    print(text)
-    val = int(text.encode('utf-8').hex(), 16)
-    #val = text.encode('utf-8').hex()
-    print(val)
-
-    val = val * 4
-    val = val//4
     
-    #print('{:x}'.format(val))
-    print(hex(val))
-    print(bytes.fromhex(hex(val)[2:]))
-    
-
-
-    print('-----------------------------')
-    
-    tmp = 'test enkrip'
-    print(tmp)
-    test = encrypt(tmp, public_key)
-    print(test)
-    test2 = decrypt(test, private_key)
-    print(test2)
-
 
 if run[7]:
     print("\n-----------")
     print("Challenge 40 - Implement E=3 RSA broadcast attack")
     
+    text = 'encryption test'
+    public_key0, private_key = get_rsa_keys(256)
+    c0 = rsa_encrypt(text, public_key)
+    n0 = public_key0[1]
+    c0 = c0 % n0
+    public_key1, private_key = get_rsa_keys(256)
+    c1 = rsa_encrypt(text, public_key)
+    n1 = public_key1[1]
+    c1 = c1 % n1
+    public_key2, private_key = get_rsa_keys(256)
+    c2 = rsa_encrypt(text, public_key)
+    n2 = public_key2[1]
+    c2 = c2 % n2
 
-    print("Still to solve ...")
+    ms0 = n1 * n2
+    ms1 = n0 * n2
+    ms2 = n0 * n1
+
+    N = n0 * n1 * n2
+
+    r0 = c0 * ms0 * pow(ms0, -1, n0)
+    r1 = c1 * ms1 * pow(ms1, -1, n1)
+    r2 = c2 * ms2 * pow(ms2, -1, n2)
+    res = (r0 + r1 + r2) % N
+    
+
+    print(res)
+    
+    
+
+
+
+
+
+
+
+
