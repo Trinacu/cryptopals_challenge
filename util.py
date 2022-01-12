@@ -4,6 +4,7 @@ import json
 import numpy as np
 from collections import Counter
 
+import random
 from itertools import zip_longest
 from itertools import cycle
 from Crypto.PublicKey.DSA import generate
@@ -318,3 +319,48 @@ def diffie_hellman():
     B = (g**b) % p
 
     return (B**a) % p
+
+def numtobytes(num):
+    return num.to_bytes((num.bit_length() + 7) // 8, byteorder='big')
+
+def bytestonum(data):
+    return int.from_bytes(data, 'big')
+
+
+def miller_rabin(n, k):
+    if n == 2 or n == 3:
+        return True
+    # even numbers (less 2) are not prime
+    if not n & 1:
+        return False
+
+    r, s = 0, n - 1
+    while not s & 1:
+        r += 1
+        s //= 2
+    for _ in range(k):
+        a = random.randrange(2, n - 1)
+        x = pow(a, s, n)
+        if x == 1 or x == n - 1:
+            continue
+        for _ in range(r - 1):
+            x = pow(x, 2, n)
+            if x == n - 1:
+                break
+        else:
+            return False
+    return True
+
+small_primes = [2,3,5,7,11,13,17,19]
+def small_prime_factor(p):
+    global small_primes
+    for x in small_primes:
+        if p % x == 0:
+            return True
+    return False
+
+def get_probable_prime(bitcount):
+    while True:
+        p = random.randint(2**(bitcount - 1), 2**bitcount - 1)
+        if not small_prime_factor(p) and miller_rabin(p, 16):
+            return p

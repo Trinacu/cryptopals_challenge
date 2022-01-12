@@ -12,6 +12,7 @@ import random
 from Crypto.Random import get_random_bytes
 
 import hashlib
+import math
 
 import requests
 
@@ -419,7 +420,7 @@ def rsa_decrypt(val, private_key):
         raise ValueError(str(val) + ' out of range!')
     val = pow(val, d, n)
     #text = bytes.fromhex('{:x}'.format(val))
-    text = data = val.to_bytes((val.bit_length() + 7) // 8, byteorder='big')#.decode()
+    text = val.to_bytes((val.bit_length() + 7) // 8, byteorder='big')#.decode()
     return text
 
 
@@ -477,11 +478,10 @@ def get_rsa_keys(keysize):
     n = p * q
     et = (p-1) * (q-1)
     d = pow(e, -1, et)
-    print('{:0256b}'.format(n))
-    print('key bit length: {} bits'.format(n.bit_length()))
-    #except ValueError:
-    #continue
-    # public key, private key
+    #print('{:0256b}'.format(d))
+    #print('key bit length: {} bits'.format(d.bit_length()))
+
+    # return public key, private key
     return [e, n], [d, n]
 
 
@@ -500,25 +500,32 @@ if run[6]:
     else:
         print('fail')
 
-    
+
+def floorRoot(n, s):
+    b = n.bit_length()
+    p = math.ceil(b/s)
+    x = 2**p
+    while x > 1:
+        y = (((s - 1) * x) + (n // (x**(s-1)))) // s
+        if y >= x:
+            return x
+        x = y
+    return 1    
 
 if run[7]:
     print("\n-----------")
     print("Challenge 40 - Implement E=3 RSA broadcast attack")
     
-    text = 'encryption test'
+    text = 'encr. test'
     public_key0, private_key = get_rsa_keys(256)
     c0 = rsa_encrypt(text, public_key)
     n0 = public_key0[1]
-    c0 = c0 % n0
     public_key1, private_key = get_rsa_keys(256)
     c1 = rsa_encrypt(text, public_key)
     n1 = public_key1[1]
-    c1 = c1 % n1
     public_key2, private_key = get_rsa_keys(256)
     c2 = rsa_encrypt(text, public_key)
     n2 = public_key2[1]
-    c2 = c2 % n2
 
     ms0 = n1 * n2
     ms1 = n0 * n2
@@ -529,12 +536,16 @@ if run[7]:
     r0 = c0 * ms0 * pow(ms0, -1, n0)
     r1 = c1 * ms1 * pow(ms1, -1, n1)
     r2 = c2 * ms2 * pow(ms2, -1, n2)
-    res = (r0 + r1 + r2) % N
-    
 
-    print(res)
     
+    res = (r0 + r1 + r2) % N
+
+    r = floorRoot(res, 3)
+    print(r)
+    data = r.to_bytes((r.bit_length() + 7) // 8, byteorder='big')
     
+    print(data)
+
 
 
 
