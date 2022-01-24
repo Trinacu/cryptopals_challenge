@@ -9,6 +9,8 @@ import codecs
 
 import os
 
+import numpy as np
+
 from tqdm import tqdm
 
 
@@ -502,8 +504,9 @@ def break_rsa_with_parity(cipher, publ, hollywood_style=True):
             low += d
         hightext = util.numtobytes(n * high // denom)
         if hollywood_style:
-            if decode_valid(hightext) != txt and decode_valid(hightext) != None:
-                txt = decode_valid(hightext)
+            decoded = decode_valid(hightext)
+            if decoded != txt and decoded != None:
+                txt = decoded
                 print(txt)
     return hightext
 
@@ -519,28 +522,120 @@ if run[5]:
     cipher = rsa_encrypt(text, publ)
     odd = rsa_plaintext_odd(cipher)
 
-    plaintext = break_rsa_with_parity(cipher, publ, False)
+    plaintext = break_rsa_with_parity(cipher, publ, False).decode()
+    print(plaintext)
 
-def pkcs_conforming(cipher):
-    global publ, priv
-    _, n = publ
+def pkcs1_conforming(cipher):
+    global priv
+    d, n = priv
     k = (n.bit_length() + 7) // 8
     data = rsa_decrypt(cipher, priv)
+    # fill 'lost' zeroes? MSB zeros are dropped when we have a number
     data = (b'\x00' * (k - len(data))) + data
-    print(data)
     if data[0] == 0 and data[1] == 2:
         return True
     return False
 
+def pkcs1_pad(data, n):
+    return b'\x00\x02' + ((n.bit_length()+7)//8 - 3 - len(data)) * b'\xff' + b'\x00' + data
+
+def find_first_s(publ, B, c0):
+    e, n = publ
+    s1 = n // (3 * B)
+    while True:
+        if pkcs1_conforming((c0 * pow(s1, e, n)) % n):
+            break
+        s1 += 1
+    return s1
+
+def find_next_s(publ, B, c0, s):
+    e, n = publ
+    while True:
+        s += 1
+        if pkcs1_conforming((c0 * pow(s, e, n)) % n):
+            break
+    return s
+    
+
+def find_r_s(s_prev, M_prev, publ, B, c0):
+    e, n = publ
+    a, b = M_prev
+    r = 2 * (b * s_prev - 2 * B) // n
+    while True:
+        s = (2 * B + r * n) // b
+        while True:
+            if pkcs1_conforming((c0 * pow(s, e, n)) % n):
+                return r, s
+            if s >= (3 * B + r * n) // a:
+                break
+            s_prev = s
+            s += 1
+        r += 1
+
+def get_next_interval(publ, M, s, B):
+    e, n = publ
+    a, b = M
+    minR = (a * s - 3*B + 1) // n
+    maxR = (b * s - 2*B) // n
+    ai = max(a, np.ceil((2*B+r*n) // s))
+    bi = min(b, np.floor((3*B-1+r*n) // s))
+    return (ai, bi)
+
+def break_PKCS1(c, publ):
+    e, n = publ
+    # Step 1
+    #msg_bytelen (-2 for the first 2 bytes being '00:02' (valid pkcs padding)
+    B = 2**(8*(len(util.numtobytes(n)) - 2))
+    M0 = (2*B, 3*B - 1)
+    while True:
+        s0 = random.randint(2, 2**keysize)
+        c0 = (c * pow(s0, e, n)) % n
+        if pkcs1_conforming(c0):
+            break
+    i = 1
+
+    while True:
+        # Step 2.a
+        if i == 1:
+            s = find_first_s(publ, B, c0)
+            M = M0
+        # Step 2.b
+        else:
+            s = find_next_s(publ, B, c0, s)
+
+        # Step 2.c
+        r, s = find_r_s(s, M, publ, B, c0)
+        print(r, s)
+
+        # Step 3
+        M_prev = M0
+        
+        a, b = M_prev
+        M = (max(a, np.ceil((2*B+r*n) // s)), min(b, np.floor((3*B-1+r*n) // s)))
+        a, b = M
+        if a == b:
+            return (a * pow(s0, -1, n)) % n
+        else:
+            i += 1
+            print(i, b-a)
+
+        
 if run[6]:
     print("\n-----------")
     print("Challenge 47 - Bleichenbacher's PKCS 1.5 Padding Oracle (Simple Case)")
-
-    publ, priv = get_rsa_keys(1024)
+    #"Chosen Ciphertext Attacks Against Protocols Based on the RSA Encryption Standard PKCS #1"
     # [e, n], [d, n]
+    keysize = 256
+    publ, priv = get_rsa_keys(keysize)
 
-    sig = rsa_encrypt(b'\x00\x02' + (128 - 2 - len('test')) * b'\x00' + b'test', publ)
-    print(pkcs_conforming(sig))
+    e, n = publ
+
+    m = pkcs1_pad(b'kick it, CC', n)
+    c = rsa_encrypt(m, publ)
+    print(pkcs1_conforming(c))
+
+    break_PKCS1(c, publ)
+
 
 
 
