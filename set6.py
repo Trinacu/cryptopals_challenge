@@ -106,7 +106,7 @@ def floorRoot(n, s):
 
 print("SET 6")
 
-run = [False, False, False, False, False, False, True]
+run = [False, False, False, False, False, False, False, True]
 
 class DecryptServer():
     def __init__(self):
@@ -539,6 +539,7 @@ def pkcs1_conforming(cipher):
 def pkcs1_pad(data, n):
     return b'\x00\x02' + ((n.bit_length()+7)//8 - 3 - len(data)) * b'\xff' + b'\x00' + data
 
+
 def find_first_s(publ, B, c0):
     e, n = publ
     s1 = n // (3 * B)
@@ -548,76 +549,78 @@ def find_first_s(publ, B, c0):
         s1 += 1
     return s1
 
-def find_next_s(publ, B, c0, s):
+def find_r_s(M, s_prev, B, publ, c0):
     e, n = publ
+    a, b = M[0]
+    r = (2 * (b*s_prev - 2*B) + n - 1) // n
     while True:
-        s += 1
-        if pkcs1_conforming((c0 * pow(s, e, n)) % n):
-            break
-    return s
-    
-
-def find_r_s(s_prev, M_prev, publ, B, c0):
-    e, n = publ
-    a, b = M_prev
-    r = 2 * (b * s_prev - 2 * B) // n
-    while True:
-        s = (2 * B + r * n) // b
-        while True:
+        sMin = (2*B + r*n + b - 1) // b
+        sMax = (3*B + r*n + a - 1) // a
+        #sMin = (2*B + r*n) // b
+        #sMax = (3*B + r*n) // a
+        for s in range(sMin, sMax):
             if pkcs1_conforming((c0 * pow(s, e, n)) % n):
                 return r, s
-            if s >= (3 * B + r * n) // a:
-                break
-            s_prev = s
-            s += 1
         r += 1
+        if r % 100000 == 0:
+            print(r, s)
+        
 
-def get_next_interval(publ, M, s, B):
+def get_new_interval(M, s, B, publ):
     e, n = publ
-    a, b = M
-    minR = (a * s - 3*B + 1) // n
-    maxR = (b * s - 2*B) // n
-    ai = max(a, np.ceil((2*B+r*n) // s))
-    bi = min(b, np.floor((3*B-1+r*n) // s))
-    return (ai, bi)
+    a, b = M[0]
+    # where does the "+ n - 1" come from? it guarantees 1 wide interval but is it right?
+    minR = (a*s - 3*B + 1 + n - 1) // n
+    maxR = (b*s - 2*B) //n
+    intervals = []
+    for r in range(minR, maxR+1):
+        ai = max(a, (2*B + r*n + s - 1) // s)
+        bi = min(b, (3*B - 1 + r*n) // s)
+        intervals.append((ai, bi))
+    return intervals
 
 def break_PKCS1(c, publ):
     e, n = publ
     # Step 1
-    #msg_bytelen (-2 for the first 2 bytes being '00:02' (valid pkcs padding)
-    B = 2**(8*(len(util.numtobytes(n)) - 2))
-    M0 = (2*B, 3*B - 1)
     while True:
-        s0 = random.randint(2, 2**keysize)
+        #s0 = random.randint(2, 2**(keysize-2))
+        # if c is already pkcs conforming (which in this case shoul be) just set s0=1
+        s0 = 1
         c0 = (c * pow(s0, e, n)) % n
         if pkcs1_conforming(c0):
             break
+    # byte size
+    k = (n.bit_length() + 7) // 8
+    B = 2 ** (8 * (k - 2))
+    M0 = [(2*B, 3*B - 1)]
     i = 1
 
     while True:
-        # Step 2.a
         if i == 1:
+            # Step 2.a
             s = find_first_s(publ, B, c0)
             M = M0
-        # Step 2.b
         else:
-            s = find_next_s(publ, B, c0, s)
+            if len(M) > 1:
+                # Step 2.b (multiple intervals)
+                print("Multiple intervals - shouldn't encounter this ...")
+                i = 1
+                M = M0
+                continue
+            else:
+                # Step 2.c
+                r, s = find_r_s(M, s, B, publ, c0)
 
-        # Step 2.c
-        r, s = find_r_s(s, M, publ, B, c0)
-        print(r, s)
-
+        print('{}) interval size {}'.format(i, M[0][1]-M[0][0] + 1))
         # Step 3
-        M_prev = M0
-        
-        a, b = M_prev
-        M = (max(a, np.ceil((2*B+r*n) // s)), min(b, np.floor((3*B-1+r*n) // s)))
-        a, b = M
+        M = get_new_intervals(M, s, B, publ)
+
+        # Step 4
+        a, b = M[0]
         if a == b:
-            return (a * pow(s0, -1, n)) % n
+            return b'\x00' + util.numtobytes((a * pow(s0, e, n)) % n)
         else:
             i += 1
-            print(i, b-a)
 
         
 if run[6]:
@@ -632,9 +635,90 @@ if run[6]:
 
     m = pkcs1_pad(b'kick it, CC', n)
     c = rsa_encrypt(m, publ)
-    print(pkcs1_conforming(c))
+    
 
-    break_PKCS1(c, publ)
+    m2 = break_PKCS1(c, publ)
+
+    print(m, m2)
+
+def find_next_s(publ, B, c0, s):
+    e, n = publ
+    while True:
+        s += 1
+        if pkcs1_conforming((c0 * pow(s, e, n)) % n):
+            break
+    return s
+
+def get_new_intervals(M, s, B, publ):
+    e, n = publ
+    a, b = M[0]
+    # where does the "+ n - 1" come from? it guarantees 1 wide interval but is it right?
+    intervals = []
+    for a,b in M:
+        minR = (a*s - 3*B + 1 + n - 1) // n
+        maxR = (b*s - 2*B) //n
+        for r in range(minR, maxR+1):
+            ai = max(a, (2*B + r*n + s - 1) // s)
+            bi = min(b, (3*B - 1 + r*n) // s)
+            if ai > bi:
+                continue
+            intervals.append((ai, bi))
+    return intervals
+
+def break_PKCS1_full(c, publ):
+    e, n = publ
+    # Skip Step 1 if c is already pkcs conforming (which in this case shoul be) just set s0=1 -> c0=c
+    s0 = 1
+    c0 = (c * pow(s0, e, n)) % n
+    k = (n.bit_length() + 7) // 8
+    B = 2 ** (8 * (k - 2))
+    M0 = [(2*B, 3*B - 1)]
+    i = 1
+
+    while True:
+        if i == 1:
+            # Step 2.a
+            s = find_first_s(publ, B, c0)
+            M = M0
+        else:
+            if len(M) > 1:
+                # Step 2.b (multiple intervals)
+                s = find_next_s(publ, B, c0, s)
+                print('multiple intervals? calculated next s: {}'.format(s))
+            else:
+                # Step 2.c
+                r, s = find_r_s(M, s, B, publ, c0)
+
+        #print('{}) interval size {}'.format(i, M[0][1]-M[0][0] + 1))
+        # Step 3
+        M = get_new_intervals(M, s, B, publ)
+
+        # Step 4
+        a, b = M[0]
+        if (len(M) == 1 and a == b):
+            return b'\x00' + util.numtobytes((a * pow(s0, e, n)) % n)
+        else:
+            i += 1
+    
+
+if run[7]:
+    print("\n-----------")
+    print("Challenge 48 - Bleichenbacher's PKCS 1.5 Padding Oracle (Complete Case)")
+    #"Chosen Ciphertext Attacks Against Protocols Based on the RSA Encryption Standard PKCS #1"
+
+    keysize = 256
+    publ, priv = get_rsa_keys(keysize)
+
+    e, n = publ
+
+    m = pkcs1_pad(b'kick it, CC', n)
+    c = rsa_encrypt(m, publ)
+    
+
+    m2 = break_PKCS1_full(c, publ)
+
+    print(m, m2)
+
 
 
 
