@@ -539,6 +539,16 @@ def pkcs1_conforming(cipher):
 def pkcs1_pad(data, n):
     return b'\x00\x02' + ((n.bit_length()+7)//8 - 3 - len(data)) * b'\xff' + b'\x00' + data
 
+def pkcs1_unpad(data):
+    # HOW TO AVOID THE PROBLEM FROM CHALLENGE 42 WHEN CHECKING FOR VALID PADDING?
+    #block = b'\x00\x01\xff\x00' + digest + (b'\x00' * (blocksize - len(digest) - 4))
+
+    pattern = b'\x00\x02\xff+?\x00'
+    r = re.compile(pattern, re.DOTALL)
+    m = r.match(data)
+    if not m:
+        return False
+    return data[m.end():]
 
 def find_first_s(publ, B, c0):
     e, n = publ
@@ -667,29 +677,27 @@ def get_new_intervals(M, s, B, publ):
 
 def break_PKCS1_full(c, publ):
     e, n = publ
-    # Skip Step 1 if c is already pkcs conforming (which in this case shoul be) just set s0=1 -> c0=c
+    # Skip Step 1 if c is already pkcs conforming (which in this case should be); just set s0=1 -> c0=c
     s0 = 1
     c0 = (c * pow(s0, e, n)) % n
     k = (n.bit_length() + 7) // 8
     B = 2 ** (8 * (k - 2))
     M0 = [(2*B, 3*B - 1)]
-    i = 1
 
+    # Step 2.a
+    # first "iteration"
+    s = find_first_s(publ, B, c0)
+    M = M0
+    
     while True:
-        if i == 1:
-            # Step 2.a
-            s = find_first_s(publ, B, c0)
-            M = M0
+        if len(M) > 1:
+            # Step 2.b (multiple intervals)
+            s = find_next_s(publ, B, c0, s)
+            print('multiple intervals? calculated next s: {}'.format(s))
         else:
-            if len(M) > 1:
-                # Step 2.b (multiple intervals)
-                s = find_next_s(publ, B, c0, s)
-                print('multiple intervals? calculated next s: {}'.format(s))
-            else:
-                # Step 2.c
-                r, s = find_r_s(M, s, B, publ, c0)
+            # Step 2.c
+            r, s = find_r_s(M, s, B, publ, c0)
 
-        #print('{}) interval size {}'.format(i, M[0][1]-M[0][0] + 1))
         # Step 3
         M = get_new_intervals(M, s, B, publ)
 
@@ -697,8 +705,6 @@ def break_PKCS1_full(c, publ):
         a, b = M[0]
         if (len(M) == 1 and a == b):
             return b'\x00' + util.numtobytes((a * pow(s0, e, n)) % n)
-        else:
-            i += 1
     
 
 if run[7]:
@@ -706,9 +712,9 @@ if run[7]:
     print("Challenge 48 - Bleichenbacher's PKCS 1.5 Padding Oracle (Complete Case)")
     #"Chosen Ciphertext Attacks Against Protocols Based on the RSA Encryption Standard PKCS #1"
 
-    keysize = 256
+    keysize = 768
     publ, priv = get_rsa_keys(keysize)
-
+    
     e, n = publ
 
     m = pkcs1_pad(b'kick it, CC', n)
@@ -717,7 +723,8 @@ if run[7]:
 
     m2 = break_PKCS1_full(c, publ)
 
-    print(m, m2)
+    print(pkcs1_unpad(m))
+    print(pkcs1_unpad(m2))
 
 
 
