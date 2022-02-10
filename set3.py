@@ -104,11 +104,13 @@ def single_block_cbc_attack(data, IV, ecbDecrypted, text):
             inject = prefix + bytes([i]) + suffix
             # current ecbDecrypted byte is XORed with previous block to get plaintext (IV for first block)
             prevBlock = data[-32:-16] if len(data) > 16 else IV
-            # inject p into data at penultimate position (this will xor it with ecbDecrypted of current block)
+            # inject block into data at penultimate position (this will xor it with ecbDecrypted of current block)
             s = data[:-16] + inject + data[-16:]
+            
             # TODO - problem here! why does this not always give 16 bytes long array?
-            if len(s)  % 16 != 0:
-                print(len(s))
+            # if we cycle through all 256 bytes and don't find a match we get 15 long array!
+            # how can we not find a match, though?
+
             # what if we stumble upon padding of length 2 and think it is '0x01'?
             # this would probably fail ...
             if cbc_padding_oracle(s):
@@ -117,6 +119,9 @@ def single_block_cbc_attack(data, IV, ecbDecrypted, text):
                 ecbDecrypted = bytes([currByte]) + ecbDecrypted
                 text = bytes([textByte]) + text
                 break
+            # TODO - look comment ~10 lines earlier!
+            if i == 0:
+                print('oh wow')
     return ecbDecrypted, text
 
 run = [True, False, False, False, False, False, False, False]
@@ -133,7 +138,6 @@ if run[0]:
     lines = [line.strip('\n') for line in lines]
     
     IV, data = generate_token()
-    print(len(data), data)
     
     blocksize = 16
     
@@ -142,7 +146,7 @@ if run[0]:
     while len(data) > 0:
         ecbDecrypted, text = single_block_cbc_attack(data, IV, ecbDecrypted, text)
         data = data[:-16]
-        print(len(data))
+        print('len(data): ' + str(len(data)))
         
     print(pkcs7_unpad(text))
 
