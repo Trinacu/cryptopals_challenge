@@ -717,7 +717,9 @@ if run[7]:
     
     e, n = publ
 
-    m = pkcs1_pad(b'kick it, CC', n)
+    text = "let's try something a bit longer to see if it works..."
+
+    m = pkcs1_pad(text.encode(), n)
     c = rsa_encrypt(m, publ)
     
 

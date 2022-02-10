@@ -41,6 +41,8 @@ def aes_cbc_decrypt(data, key, IV, blocksize=16):
     prev_block = IV
     out_blocks = []
     for block in blocks:
+        if len(block) != blocksize:
+            print(len(block))
         decrypted = aes_ecb_decrypt(block, key)
         xor = bytes(a ^ b for a, b in zip(decrypted, prev_block))
         out_blocks.append(xor)
@@ -76,7 +78,7 @@ def generate_token():
         IV = get_random_bytes(16)
     global lines
     data = codecs.decode(lines[np.random.randint(len(lines))].encode(), 'base64')
-    print(data)
+    print('generated token from text: {}'.format(data))
     return IV, aes_cbc_encrypt(data, key, IV)
 
 def cbc_padding_oracle(encrypted):
@@ -104,8 +106,9 @@ def single_block_cbc_attack(data, IV, ecbDecrypted, text):
             prevBlock = data[-32:-16] if len(data) > 16 else IV
             # inject p into data at penultimate position (this will xor it with ecbDecrypted of current block)
             s = data[:-16] + inject + data[-16:]
-            if len(s) % 16:
-                print(len(prefix), len(suffix), len(inject))
+            # TODO - problem here! why does this not always give 16 bytes long array?
+            if len(s)  % 16 != 0:
+                print(len(s))
             # what if we stumble upon padding of length 2 and think it is '0x01'?
             # this would probably fail ...
             if cbc_padding_oracle(s):
@@ -116,7 +119,7 @@ def single_block_cbc_attack(data, IV, ecbDecrypted, text):
                 break
     return ecbDecrypted, text
 
-run = [False, False, True, False, False, False, False, True]
+run = [True, False, False, False, False, False, False, False]
         
 print("SET 3")
 if run[0]:
@@ -130,6 +133,7 @@ if run[0]:
     lines = [line.strip('\n') for line in lines]
     
     IV, data = generate_token()
+    print(len(data), data)
     
     blocksize = 16
     
@@ -138,7 +142,7 @@ if run[0]:
     while len(data) > 0:
         ecbDecrypted, text = single_block_cbc_attack(data, IV, ecbDecrypted, text)
         data = data[:-16]
-        print(data)
+        print(len(data))
         
     print(pkcs7_unpad(text))
 

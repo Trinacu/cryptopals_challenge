@@ -138,7 +138,7 @@ def aes_cbc_encrypt(bytearr, key, IV=None, blocksize=16):
         IV = b'0' * blocksize
     bytearr = pkcs7_pad(bytearr, blocksize)
     blocks = [bytearr[start:start+blocksize] for start in range(0, len(bytearr), blocksize)]
-    prev_encrypted = IV
+    prev_encrypted = IV[:blocksize]
     out_blocks = []
     for block in blocks:
         encrypted = aes_ecb_encrypt(repeating_xor(block, prev_encrypted), key)
